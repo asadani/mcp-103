@@ -1,21 +1,2161 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#15231f">
-  <meta name="description" content="An interactive course for operating a multi-tenant MCP server.">
-  <title>MCP 103 · Operate the server</title>
-  <link rel="stylesheet" href="./tutorial.css">
-  <link rel="stylesheet" href="./accessibility.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MCP 103 · Operate the server</title>
+<meta name="description" content="Operate an MCP server: rate limits, budgets, retries, safe URL import, durable jobs, composition, observability and deployment, with the real code, real captured runs and an honest list of the gaps.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+
+:root{
+  --paper:#EAECE7;
+  --paper-2:#F4F5F1;
+  --paper-3:#DFE3DC;
+  --grid:#D7DCD4;
+  --rule:#C2C9C0;
+  --ink:#141C1A;
+  --ink-2:#4E5B56;
+  --ink-3:#8A968F;
+  --host:#A81B5D;
+  --host-bg:#F7E6EE;
+  --server:#0C6B70;
+  --server-bg:#DFEEEE;
+  --wire:#A05F05;
+  --wire-bg:#F6EBD8;
+  --display:'IBM Plex Sans Condensed','Oswald',system-ui,sans-serif;
+  --body:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:'IBM Plex Mono','SFMono-Regular',Consolas,'Liberation Mono',monospace;
+}
+
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;
+  font-family:var(--body);
+  color:var(--ink);
+  background-color:var(--paper);
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size:26px 26px;
+  font-size:16px;
+  line-height:1.62;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ---------- layout ---------- */
+.frame{max-width:1180px;margin:0 auto;padding:0 20px 120px}
+.split{display:grid;grid-template-columns:186px minmax(0,1fr);gap:44px;align-items:start}
+
+/* ---------- masthead ---------- */
+.masthead{
+  border-bottom:2px solid var(--ink);
+  padding:46px 0 22px;
+  margin-bottom:40px;
+}
+.partno{
+  font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--ink-3);display:flex;flex-wrap:wrap;gap:18px;margin-bottom:26px;
+}
+.partno b{color:var(--ink-2);font-weight:500}
+h1.title{
+  font-family:var(--display);font-weight:700;
+  font-size:clamp(46px,9vw,104px);line-height:.92;letter-spacing:-.02em;
+  margin:0 0 6px;text-transform:uppercase;
+}
+h1.title .thin{font-weight:600;color:var(--ink-2)}
+.subtitle{
+  max-width:60ch;font-size:18px;color:var(--ink-2);margin:20px 0 0;
+}
+
+/* legend */
+.legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:26px}
+.key{
+  font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+  padding:5px 10px;border:1px solid;border-radius:2px;display:inline-flex;align-items:center;gap:7px;
+}
+.key::before{content:"";width:9px;height:9px;border-radius:50%;background:currentColor}
+.key.host{color:var(--host);border-color:var(--host);background:var(--host-bg)}
+.key.server{color:var(--server);border-color:var(--server);background:var(--server-bg)}
+.key.wire{color:var(--wire);border-color:var(--wire);background:var(--wire-bg)}
+
+/* ---------- rail ---------- */
+.rail{position:sticky;top:20px}
+.rail-title{
+  font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--ink-3);padding-bottom:10px;border-bottom:1px solid var(--rule);margin-bottom:8px;
+}
+.rail a{
+  display:grid;grid-template-columns:26px 1fr;gap:8px;align-items:baseline;
+  text-decoration:none;color:var(--ink-2);padding:5px 0;
+  font-size:13px;line-height:1.35;border-left:2px solid transparent;padding-left:9px;
+  transition:color .15s,border-color .15s;
+}
+.rail a span.n{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+.rail a:hover{color:var(--ink)}
+.rail a.on{color:var(--ink);border-left-color:var(--host);font-weight:600}
+.rail a.on span.n{color:var(--host)}
+.rail .grp{
+  font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink-3);margin:18px 0 4px;padding-left:11px;
+}
+
+/* ---------- chapters ---------- */
+.chapter{padding:8px 0 78px;scroll-margin-top:20px}
+.eyebrow{
+  font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--ink-3);margin-bottom:12px;display:flex;align-items:center;gap:10px;
+}
+.eyebrow::after{content:"";flex:1;height:1px;background:var(--rule)}
+.chapter h2{
+  font-family:var(--display);font-weight:700;text-transform:uppercase;
+  font-size:clamp(30px,5vw,46px);line-height:1;letter-spacing:-.01em;margin:0 0 18px;
+}
+.chapter h3{
+  font-family:var(--display);font-weight:600;font-size:21px;letter-spacing:.01em;
+  margin:34px 0 10px;text-transform:uppercase;
+}
+.chapter p{max-width:66ch;margin:0 0 16px}
+.lede{font-size:19px;color:var(--ink-2);max-width:62ch}
+.chapter ul,.chapter ol{max-width:64ch;padding-left:20px;margin:0 0 18px}
+.chapter li{margin-bottom:7px}
+code{
+  font-family:var(--mono);font-size:.88em;background:var(--paper-3);
+  padding:1px 5px;border-radius:2px;
+}
+strong{font-weight:600}
+.host-t{color:var(--host);font-weight:600}
+.server-t{color:var(--server);font-weight:600}
+.wire-t{color:var(--wire);font-weight:600}
+
+/* ---------- spec block (datasheet definition) ---------- */
+.spec{
+  position:relative;background:var(--paper-2);border:1px solid var(--ink);
+  padding:26px 24px 22px;margin:26px 0;max-width:70ch;
+}
+.spec::before{
+  content:attr(data-label);position:absolute;top:-1px;left:-1px;
+  background:var(--ink);color:var(--paper-2);
+  font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+  padding:3px 9px;
+}
+.spec p{margin:0}
+.spec p+p{margin-top:12px}
+.spec.thin{border-style:dashed;background:transparent}
+
+/* ---------- panels & controls ---------- */
+.panel{
+  background:var(--paper-2);border:1px solid var(--rule);margin:28px 0;
+}
+.panel-hd{
+  display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;
+  padding:11px 16px;border-bottom:1px solid var(--rule);background:var(--paper-3);
+}
+.panel-hd h4{
+  margin:0;font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink-2);font-weight:500;
+}
+.panel-bd{padding:20px 16px}
+
+button{font-family:var(--body);font-size:13px;cursor:pointer}
+.btn{
+  background:var(--ink);color:var(--paper-2);border:1px solid var(--ink);
+  padding:7px 15px;border-radius:2px;font-weight:500;letter-spacing:.01em;
+  transition:opacity .15s;
+}
+.btn:hover{opacity:.85}
+.btn:disabled{opacity:.28;cursor:not-allowed}
+.btn.ghost{background:transparent;color:var(--ink)}
+.btn.ghost:hover{background:var(--paper-3);opacity:1}
+button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(--host);outline-offset:2px}
+
+.seg{display:inline-flex;border:1px solid var(--rule);border-radius:2px;overflow:hidden;background:var(--paper-2)}
+.seg button{
+  border:0;background:transparent;padding:7px 13px;color:var(--ink-2);
+  font-family:var(--mono);font-size:11px;letter-spacing:.09em;text-transform:uppercase;
+  border-right:1px solid var(--rule);
+}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--paper-2)}
+
+/* ---------- code frames ---------- */
+pre.frame-json{
+  font-family:var(--mono);font-size:12.5px;line-height:1.6;
+  background:var(--paper-2);border:1px solid var(--rule);border-left-width:3px;
+  padding:13px 15px;margin:0;overflow-x:auto;white-space:pre;color:var(--ink);
+}
+pre.frame-json.from-host{border-left-color:var(--host)}
+pre.frame-json.from-server{border-left-color:var(--server)}
+pre.frame-json.from-model{border-left-color:var(--wire)}
+.frame-tag{
+  font-family:var(--mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;
+  margin:0 0 5px;display:flex;gap:8px;align-items:center;
+}
+.frame-tag.from-host{color:var(--host)}
+.frame-tag.from-server{color:var(--server)}
+.frame-tag.from-model{color:var(--wire)}
+.stack>*+*{margin-top:16px}
+
+/* ---------- tables ---------- */
+.tbl-wrap{overflow-x:auto;margin:26px 0;border:1px solid var(--rule);background:var(--paper-2)}
+table{border-collapse:collapse;width:100%;min-width:620px;font-size:14px}
+th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--rule);vertical-align:top}
+thead th{
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--ink-2);background:var(--paper-3);font-weight:500;
+}
+tbody tr:last-child td{border-bottom:0}
+td.lbl{font-weight:600;width:23%}
+
+/* ---------- misc ---------- */
+.callout{
+  border-left:3px solid var(--wire);background:var(--wire-bg);
+  padding:15px 18px;margin:24px 0;max-width:68ch;
+}
+.callout p{margin:0}
+.callout .tag{
+  font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--wire);display:block;margin-bottom:5px;
+}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;margin:24px 0}
+.card{background:var(--paper-2);border:1px solid var(--rule);padding:16px}
+.card h5{
+  margin:0 0 7px;font-family:var(--display);font-size:16px;text-transform:uppercase;letter-spacing:.02em;
+}
+.card p{font-size:14px;margin:0;color:var(--ink-2)}
+.card.host{border-top:3px solid var(--host)}
+.card.server{border-top:3px solid var(--server)}
+.card.wire{border-top:3px solid var(--wire)}
+svg{max-width:100%;height:auto;display:block}
+.figcap{
+  font-family:var(--mono);font-size:11px;color:var(--ink-3);letter-spacing:.04em;
+  margin-top:10px;
+}
+
+details.acc{border:1px solid var(--rule);background:var(--paper-2);padding:12px 16px;margin-bottom:8px;border-radius:2px}
+details.acc summary{cursor:pointer;font-weight:600;font-size:15px;list-style:none}
+details.acc summary::-webkit-details-marker{display:none}
+details.acc summary::before{content:"+ ";color:var(--host);font-family:var(--mono)}
+details.acc[open] summary::before{content:"– "}
+details.acc p{margin:10px 0 0;max-width:64ch;color:var(--ink-2)}
+
+@media (max-width:860px){
+  .split{grid-template-columns:1fr;gap:0}
+  .rail{position:static;margin-bottom:34px;border:1px solid var(--rule);background:var(--paper-2);padding:14px}
+  .rail-inner{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:2px}
+  .rail .grp{grid-column:1/-1;margin:10px 0 2px}
+}
+@media (prefers-reduced-motion:reduce){
+  *{transition:none!important;animation:none!important}
+  html{scroll-behavior:auto}
+}
+
+/* Site header. Every reader-facing page needs a way back to the index: this
+   page is served from tech.anujsadani.in/mcp-101/ and people arrive on it
+   from search and shared links, not only from the site. Absolute URLs so it
+   also works when the file is opened from disk. */
+.sitebar{display:flex;align-items:center;justify-content:space-between;gap:16px;
+ padding:10px 22px;border-bottom:1px solid var(--rule);background:var(--paper-2);
+ font-size:13px;position:sticky;top:0;z-index:50}
+.sitebar a{text-decoration:none;color:var(--ink-2)}
+.sitebar .brand{color:var(--ink);font-weight:600}
+.sitebar .right{display:flex;gap:16px;align-items:center}
+.sitebar a:hover{color:var(--ink)}
+@media print{.sitebar{display:none}}
+
+/* ================= additions for the 102-104 courses ================= */
+/* Contrast: 101's --ink-3 and --wire fall below WCAG AA on the paper tones. Same hues, darker. */
+:root{
+  --ink-3:#56625B;
+  --wire:#8A5104;
+  --prod:#3D5C1F;
+  --prod-bg:#E6EEDB;
+}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.skip{position:absolute;left:-999px;top:8px;background:var(--ink);color:var(--paper-2);padding:8px 14px;z-index:99;font-size:13px}
+.skip:focus{left:8px}
+.split>main{min-width:0}
+.key.prod{color:var(--prod);border-color:var(--prod);background:var(--prod-bg)}
+.card.prod{border-top:3px solid var(--prod)}
+.prod-t{color:var(--prod);font-weight:600}
+.sitebar .series{display:flex;gap:4px;align-items:center;font-family:var(--mono);font-size:11px;letter-spacing:.08em}
+.sitebar .series a{padding:3px 8px;border:1px solid var(--rule);border-radius:2px;color:var(--ink-2)}
+.sitebar .series a[aria-current="page"]{background:var(--ink);color:var(--paper-2);border-color:var(--ink)}
+.sitebar .series a:not([aria-current]):hover{background:var(--paper-3)}
+@media (max-width:640px){.sitebar .series a:not([aria-current]){display:none}}
+
+/* panel titles are h3 in these pages (heading order), styled like 101's h4 */
+.chapter .panel-hd h3.ph{margin:0;font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-2);font-weight:500}
+.card-h{margin:0 0 7px!important;font-family:var(--display);font-size:16px;text-transform:uppercase;letter-spacing:.02em;font-weight:700;color:var(--ink)!important}
+tbody th.lbl{text-align:left;font-weight:600;width:23%}
+.lede a,.chapter p a,.chapter li a{color:var(--host)}
+
+/* ---------- code excerpts ---------- */
+.cap{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:baseline;justify-content:space-between;
+  font-family:var(--mono);font-size:11px;letter-spacing:.04em;background:var(--paper-3);
+  border:1px solid var(--rule);border-bottom:0;padding:6px 12px;margin-top:22px;max-width:100%}
+.cap b{font-weight:600;color:var(--ink)}
+.cap span{color:var(--ink-2)}
+pre.code,.run pre{font-family:var(--mono);font-size:12.5px;line-height:1.6;margin:0 0 20px;overflow-x:auto;white-space:pre;tab-size:2}
+pre.code{background:var(--paper-2);border:1px solid var(--rule);border-left-width:3px;padding:13px 15px;color:var(--ink)}
+pre.code.server{border-left-color:var(--server)}
+pre.code.host{border-left-color:var(--host)}
+pre.code.prod{border-left-color:var(--prod)}
+pre.code.wire{border-left-color:var(--wire)}
+pre code{font-family:inherit;font-size:inherit;background:none;padding:0}
+.t-c{color:var(--ink-3);font-style:italic}
+.t-s{color:var(--server)}
+.t-n{color:var(--wire)}
+.t-k{color:var(--host)}
+.t-p{color:var(--ink);font-weight:500}
+pre:focus-visible{outline:2px solid var(--host);outline-offset:1px}
+.panel-bd pre.code{margin-bottom:0}
+.panel-bd .cap{margin-top:0}
+.panel-bd section+section{margin-top:0}
+
+/* captured terminal output */
+.run{margin:22px 0;border:1px solid var(--ink);background:var(--ink);color:var(--paper-2)}
+.run-hd{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:6px 12px;border-bottom:1px solid #33413d;
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:#B7C2BC}
+.run pre{padding:13px 15px;margin:0;color:var(--paper-2);max-height:420px;overflow:auto}
+.run .t-k{color:#F2A6C6}
+
+/* problem callout */
+.callout.bad{border-left-color:var(--host);background:var(--host-bg)}
+.callout.bad .tag{color:var(--host)}
+.callout.ok{border-left-color:var(--server);background:var(--server-bg)}
+.callout.ok .tag{color:var(--server)}
+.callout code{background:rgba(20,28,26,.08)}
+
+/* ---------- trace / stepper ---------- */
+.lanes{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:8px;margin-bottom:18px}
+.lane{border:1.5px solid var(--rule);background:var(--paper-3);padding:8px 10px;text-align:center;transition:background .15s,border-color .15s}
+.lane b{display:block;font-family:var(--mono);font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+.lane span{display:block;font-family:var(--mono);font-size:10px;color:var(--ink-3);margin-top:2px}
+.lane.on.host{background:var(--host-bg);border-color:var(--host)}.lane.on.host b,.lane.on.host span{color:var(--host)}
+.lane.on.server{background:var(--server-bg);border-color:var(--server)}.lane.on.server b,.lane.on.server span{color:var(--server)}
+.lane.on.wire{background:var(--wire-bg);border-color:var(--wire)}.lane.on.wire b,.lane.on.wire span{color:var(--wire)}
+.lane.on.prod{background:var(--prod-bg);border-color:var(--prod)}.lane.on.prod b,.lane.on.prod span{color:var(--prod)}
+.steps{list-style:none;padding:0;margin:0;max-width:none}
+.steps>li{border-top:1px solid var(--rule);padding:12px 0}
+.steps .st{font-weight:600;margin:0 0 4px}
+.steps .sd{margin:0 0 10px;color:var(--ink-2)}
+.fr+.fr{margin-top:12px}
+.tv-count{font-family:var(--mono);font-size:11px;color:var(--ink-3);letter-spacing:.06em;margin:0 0 4px}
+.tv-title{font-family:var(--display);font-weight:600;font-size:19px;text-transform:uppercase;margin:0 0 6px}
+.tv-desc{margin:0 0 6px!important;color:var(--ink-2);max-width:64ch}
+.tv-badge{margin:0 0 14px!important}
+.tap{border:1px solid var(--rule);background:var(--paper-2)}
+.tap-hd{padding:8px 13px;border-bottom:1px solid var(--rule);background:var(--paper-3);font-family:var(--mono);font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:var(--ink-2)}
+.tap-bd{max-height:360px;overflow-y:auto;padding:13px}
+.tap-bd .fr.old{opacity:.6}
+.tap-bd .fr+.fr,.tap-bd .grp-step+.grp-step{margin-top:14px}
+.tap-bd .empty{margin:0}
+.js .steps{display:none}
+.ctl{display:flex;gap:8px;flex-wrap:wrap}
+
+/* ---------- simulators ---------- */
+.fields{display:flex;flex-wrap:wrap;gap:12px 18px;align-items:flex-end;margin-bottom:16px}
+.field{display:flex;flex-direction:column;gap:4px;font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--ink-2)}
+.field input[type=text],.field input[type=number],.field select{font-family:var(--mono);font-size:13px;padding:6px 8px;border:1px solid var(--ink-3);background:var(--paper-2);color:var(--ink);border-radius:2px;min-width:140px}
+.field input[type=range]{accent-color:var(--host);width:190px}
+.field output{color:var(--ink);font-weight:600}
+.readout{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule);margin:14px 0}
+.readout>div{background:var(--paper-2);padding:10px 12px}
+.readout small{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin-bottom:3px}
+.readout strong{font-family:var(--display);font-size:22px;font-weight:700;letter-spacing:.01em}
+.chip{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;letter-spacing:.06em;padding:3px 9px;border:1px solid;border-radius:2px}
+.chip::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor}
+.chip.ok{color:var(--server);background:var(--server-bg)}
+.chip.no{color:var(--host);background:var(--host-bg)}
+.chip.warn{color:var(--wire);background:var(--wire-bg)}
+.chip.info{color:var(--ink-2);background:var(--paper-3)}
+.log{list-style:none;margin:12px 0 0;padding:0;max-width:none;border:1px solid var(--rule);background:var(--paper-2);max-height:300px;overflow-y:auto;font-family:var(--mono);font-size:12px}
+.log li{padding:6px 12px;border-bottom:1px solid var(--rule);margin:0;display:flex;gap:10px;flex-wrap:wrap;align-items:baseline}
+.log li:last-child{border-bottom:0}
+.log .t{color:var(--ink-3);min-width:56px}
+.mini{width:100%;min-width:0;font-family:var(--mono);font-size:12px;border:1px solid var(--rule);background:var(--paper-2);margin:8px 0}
+.mini caption{caption-side:top;text-align:left;font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);padding:0 0 4px}
+.mini th,.mini td{padding:5px 10px;font-size:12px}
+.mini thead th{font-size:10px}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.sim .btn+.btn{margin-left:0}
+.bar{height:10px;background:var(--paper-3);border:1px solid var(--rule);position:relative;margin:4px 0 10px}
+.bar>i{position:absolute;left:0;top:0;bottom:0;background:var(--server)}
+.bar>i.b2{background:var(--wire)}
+
+/* ---------- quiz ---------- */
+.qz-tools{display:flex;gap:10px;align-items:center}
+.qz-score{font-family:var(--mono);font-size:11px;color:var(--ink-2)}
+.qz-q{padding:0 0 20px;margin:0 0 20px;border-bottom:1px solid var(--rule)}
+.qz-q:last-child{border-bottom:0;margin-bottom:0;padding-bottom:0}
+.qz-t{font-weight:600;margin:0 0 10px;max-width:68ch}
+.qz-o{display:grid;gap:6px;max-width:68ch}
+.qz-o button{text-align:left;font-family:var(--body);font-size:14px;padding:9px 12px;border:1px solid var(--rule);background:var(--paper-2);color:var(--ink);border-radius:2px;line-height:1.45}
+.qz-o button:hover:not(:disabled){border-color:var(--ink)}
+.qz-o button:disabled{cursor:default}
+.qz-o button.pick{border-color:var(--ink);border-width:2px}
+.qz-o button.right{background:var(--server-bg);border-color:var(--server)}
+.qz-o button.wrong{background:var(--host-bg);border-color:var(--host)}
+.qz-why{margin:10px 0 0!important;padding:10px 14px;border-left:3px solid var(--wire);background:var(--wire-bg);max-width:68ch;font-size:14px}
+.qz-why b{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase}
+
+/* ---------- footer ---------- */
+.nextcourse{margin-top:34px;padding:22px 24px;border:1px solid var(--ink);background:var(--paper-2);display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap}
+.nextcourse small{display:block;font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+.nextcourse strong{font-family:var(--display);font-size:24px;text-transform:uppercase}
+.nextcourse a{background:var(--ink);color:var(--paper-2);padding:9px 16px;text-decoration:none;font-size:14px;border-radius:2px}
+.nextcourse a:hover{opacity:.85}
+.repomap{font-family:var(--mono);font-size:12.5px}
+pre.frame-json.from-prod{border-left-color:var(--prod)}
+.frame-tag.from-prod{color:var(--prod)}
+.frame-tag{margin-top:0}
+pre.frame-json{max-height:420px;overflow:auto}
+figure{margin:0}
+.arch{display:block;width:100%;max-width:800px;margin:6px 0}
+.arch-v{display:none;max-width:400px;margin:6px auto}
+@media (max-width:640px){.arch-h{display:none}.arch-v{display:block}}
+.arch .al{font-family:var(--mono);font-size:12px;fill:var(--ink-2);letter-spacing:.02em;paint-order:stroke;stroke:var(--paper);stroke-width:4px;stroke-linejoin:round}
+</style>
 </head>
 <body>
-  <a class="skip" href="#lesson">Skip to lesson</a>
-  <header class="site-head">
-    <a class="brand" href="https://tech.anujsadani.in/">ANUJ SADANI <span>/ TECH</span></a>
-    <nav aria-label="Course links"><a id="source-link" href="#">Source ↗</a><a id="previous-link" href="#">← Previous</a><a id="next-link" href="#">Next →</a></nav>
-  </header>
-  <div id="course-root"></div>
-  <script type="module" src="./tutorial.js"></script>
+<a class="skip" href="#main">Skip to the course</a>
+<nav class="sitebar" aria-label="Site">
+  <a class="brand" href="https://tech.anujsadani.in/">Anuj Sadani | Tech</a>
+  <span class="series" role="group" aria-label="Course series"><span style="color:var(--ink-3);margin-right:4px">MCP</span><a href="https://tech.anujsadani.in/mcp-101/">101</a><a href="https://tech.anujsadani.in/mcp-102/">102</a><a href="https://tech.anujsadani.in/mcp-103/" aria-current="page">103</a><a href="https://tech.anujsadani.in/mcp-104/">104</a></span>
+  <span class="right">
+    <a href="https://github.com/asadani/mcp-103" target="_blank" rel="noopener">Source &nearr;</a>
+    <a href="https://tech.anujsadani.in/">&larr; index</a>
+  </span>
+</nav>
+
+<div class="frame">
+
+<header class="masthead">
+  <div class="partno">
+    <span><b>DOC</b> MCP-103</span>
+    <span><b>SCOPE</b> Production engineering</span>
+    <span><b>PREREQ</b> MCP 102</span>
+    <span><b>PROTOCOL</b> 2026-07-28</span>
+    <span><b>READ</b> ~70 min</span>
+  </div>
+  <h1 class="title">Operate<br>the <span class="thin">server</span></h1>
+  <p class="subtitle">MCP 102 made the integration correct. This course puts it under pressure: many callers, a budget, an outside network, work that outlasts a request, and the questions of running it. Each control is read, operated in a simulator, and then checked against where it is actually wired in.</p>
+  <div class="legend">
+    <span class="key host">Host &amp; client</span>
+    <span class="key server">MCP server</span>
+    <span class="key wire">Model</span>
+    <span class="key prod">Product system</span>
+  </div>
+</header>
+
+<div class="split">
+
+<nav class="rail" aria-label="Chapters">
+  <div class="rail-title">Contents</div>
+  <div class="rail-inner">
+    <div class="grp">Groundwork</div>
+    <a href="#ch00"><span class="n">00</span><span>Where 102 left off</span></a>
+    <div class="grp">Defend</div>
+    <a href="#ch01"><span class="n">01</span><span>Trust boundaries</span></a>
+    <a href="#ch02"><span class="n">02</span><span>Fairness and limits</span></a>
+    <a href="#ch03"><span class="n">03</span><span>Budgets and entitlements</span></a>
+    <div class="grp">Survive</div>
+    <a href="#ch04"><span class="n">04</span><span>Retries & idempotency</span></a>
+    <a href="#ch05"><span class="n">05</span><span>Fallbacks and circuits</span></a>
+    <div class="grp">Beyond the request</div>
+    <a href="#ch06"><span class="n">06</span><span>Safe URL import</span></a>
+    <a href="#ch07"><span class="n">07</span><span>Durable tasks</span></a>
+    <a href="#ch08"><span class="n">08</span><span>Composition</span></a>
+    <div class="grp">Operate</div>
+    <a href="#ch09"><span class="n">09</span><span>Observability</span></a>
+    <a href="#ch10"><span class="n">10</span><span>Deployment</span></a>
+    <div class="grp">Check yourself</div>
+    <a href="#ch11"><span class="n">11</span><span>Check yourself</span></a>
+  </div>
+</nav>
+
+<main id="main">
+
+<!-- ============ 00 ============ -->
+<section class="chapter" id="ch00">
+  <div class="eyebrow">Chapter 00 · Groundwork</div>
+  <h2>Where 102 left off</h2>
+  <p class="lede">MCP 102 made the integration correct. MCP 103 asks what happens to correctness when callers are many, the network is not yours, and the work takes longer than a request.</p>
+
+  <p>This course starts from the finished system in MCP 102: same five identities, same two product APIs, same tenant model. If you have not read it, the short version is in Chapters 00 and 01 there. What this repository adds is <code>src/production.ts</code> (the controls) and <code>src/worker.ts</code> (a job worker), four new tools, an operations endpoint, a Dockerfile and a deployment sketch. The rest is 102’s code with the fixes that course found, and its tests still pass.</p>
+  <div class="tbl-wrap"><table><thead><tr><th scope="col">New in this repo</th><th scope="col">What it is</th><th scope="col">Chapter</th></tr></thead><tbody><tr><th scope="row" class="lbl"><code>FairLimiter</code></th><td>Per-actor token bucket plus per-organisation concurrency cap</td><td>02</td></tr><tr><th scope="row" class="lbl"><code>Budget</code></th><td>Reserve-then-reconcile spending ledger per organisation</td><td>03</td></tr><tr><th scope="row" class="lbl"><code>SafeImporter</code></th><td>A URL fetcher that tries not to be turned on your own network</td><td>06</td></tr><tr><th scope="row" class="lbl"><code>Jobs</code></th><td>A durable queue table with leases</td><td>07</td></tr><tr><th scope="row" class="lbl"><code>nextHop()</code></th><td>Carries deadline, budget and visited servers across composed calls; used by <code>draft_release_note</code></td><td>08</td></tr><tr><th scope="row" class="lbl"><code>SharedRate</code></th><td>The token bucket in PostgreSQL, one allowance for every replica</td><td>02</td></tr><tr><th scope="row" class="lbl"><code>src/worker.ts</code></th><td>A worker that leases, runs and completes queued jobs</td><td>07</td></tr><tr><th scope="row" class="lbl"><code>/api/ops</code></th><td>Usage and the last twelve audit rows for the caller’s organisation</td><td>09</td></tr><tr><th scope="row" class="lbl"><code>infra/aws/</code>, <code>docker-compose.yml</code></th><td>A deployment sketch and a local PostgreSQL stack</td><td>10</td></tr><tr><th scope="row" class="lbl">Tools: <code>import_url</code>, <code>start_release_job</code>, <code>get_job</code>, <code>draft_release_note</code></th><td>The four new tools, captured live in Chapters 01, 06, 07 and 08</td><td>—</td></tr></tbody></table></div>
+
+  <h3>The request pipeline now</h3>
+  <p>In 102, <code>execute()</code> identified the caller, forwarded the call and audited it. Here that logic lives in <code>guarded()</code>, which also asks the limiter for permission first and always gives the permit back. Every tool goes through it:</p>
+  <div class="cap"><b>src/mcp.ts</b><span>guarded(): identify, take a permit, run, audit, answer in one shape</span></div><pre class="code server" tabindex="0"><code><span class="t-k">const</span> guarded = <span class="t-k">async</span> (
+  name: string,
+  cost: number,
+  run: (a: Actor, traceId: string) =&gt; Promise&lt;any&gt;,
+  render?: (
+    data: any,
+    traceId: string,
+  ) =&gt; { text: string; structured: Record&lt;string, unknown&gt; },
+) =&gt; {
+  <span class="t-k">const</span> a = <span class="t-k">await</span> actor(db, subject),
+    traceId = id();
+  <span class="t-k">let</span> leave: (() =&gt; <span class="t-k">void</span>) | <span class="t-k">undefined</span>;
+  <span class="t-k">try</span> {
+    <span class="t-k">await</span> production.rate.take(a, cost);
+    leave = production.limiter.enter(a, cost);
+    <span class="t-k">const</span> data = <span class="t-k">await</span> run(a, traceId);
+    <span class="t-k">await</span> audit(db, a, name, <span class="t-s">'success'</span>, traceId);
+    <span class="t-k">const</span> r =
+      render ?
+        render(data, traceId)
+      : { text: JSON.stringify(data), structured: JSON.parse(JSON.stringify(data)) };
+    <span class="t-k">return</span> {
+      content: [{ <span class="t-k">type</span>: <span class="t-s">'text'</span> <span class="t-k">as</span> <span class="t-k">const</span>, text: r.text }],
+      structuredContent: r.structured,
+    };
+  } <span class="t-k">catch</span> (e) {
+    <span class="t-k">const</span> f = e instanceof Fault ? e : <span class="t-k">new</span> Fault(<span class="t-s">'FAILURE'</span>, <span class="t-s">'Operation failed.'</span>);
+    <span class="t-k">await</span> audit(
+      db,
+      a,
+      name,
+      f.code === <span class="t-s">'RATE_LIMITED'</span> || f.code === <span class="t-s">'CONCURRENCY_LIMIT'</span> ?
+        <span class="t-s">'throttled'</span>
+      : <span class="t-s">'failure'</span>,
+      traceId,
+    );
+    <span class="t-k">return</span> {
+      isError: <span class="t-k">true</span>,
+      content: [
+        {
+          <span class="t-k">type</span>: <span class="t-s">'text'</span> <span class="t-k">as</span> <span class="t-k">const</span>,
+          text: JSON.stringify({
+            code: f.code,
+            message: f.message,
+            retryable: f.retryable,
+            traceId,
+          }),
+        },
+      ],
+    };
+  } <span class="t-k">finally</span> {
+    leave?.();
+  }
+};</code></pre>
+  <p>Reads cost one unit, writes two. That single change is the whole integration point for rate limiting, which is worth noticing: the control lives in the adapter, where every tool goes through it, not scattered through the tools.</p>
+
+  <h3>Which tool goes through which control</h3>
+  <p>Before trusting any of these controls, find out where they are actually applied. This table was built by reading <code>src/mcp.ts</code> and searching the source for each control’s call sites.</p>
+  <div class="tbl-wrap"><table><thead><tr><th scope="col">Tool</th><th scope="col">Limiter (cost)</th><th scope="col">Budget</th><th scope="col">Audit row</th><th scope="col">Entitlement</th></tr></thead><tbody><tr><th scope="row" class="lbl"><code>search_tasks</code>, <code>get_task</code>, <code>search_pages</code></th><td>yes (1)</td><td>—</td><td>yes</td><td>—</td></tr><tr><th scope="row" class="lbl"><code>create_task</code>, <code>update_task</code>, <code>publish_page</code></th><td>yes (2)</td><td>—</td><td>yes</td><td>—</td></tr><tr><th scope="row" class="lbl"><code>import_url</code></th><td>yes (3)</td><td><strong>yes</strong></td><td>yes</td><td>—</td></tr><tr><th scope="row" class="lbl"><code>start_release_job</code></th><td>yes (2)</td><td>—</td><td>yes</td><td>write role + Pro plan</td></tr><tr><th scope="row" class="lbl"><code>get_job</code></th><td>yes (1)</td><td>—</td><td>yes</td><td>—</td></tr><tr><th scope="row" class="lbl"><code>draft_release_note</code></th><td>yes (3)</td><td>—</td><td>yes</td><td>—</td></tr></tbody></table></div>
+  <div class="callout ok"><span class="tag">Fixed in this repo</span><p>This table used to have holes, and how they were found is the lesson. <code>start_release_job</code> and <code>get_job</code> sat outside the pipeline the other seven tools shared: no rate-limit permit, no audit row, plain-text errors, and job creation checked the plan but not the role. Nothing in the tests noticed, because each control was tested on its own. Every tool now goes through <code>guarded()</code>, and tests drive the controls through the MCP server together. A control that exists is not a control that applies, so keep asking where each one is wired in.</p></div>
+
+  <h3>The tests, as a starting point</h3>
+  <div class="run"><div class="run-hd"><span>Captured run</span><span>captured 2026-09-20 · thirty-five tests, all passing</span></div><pre tabindex="0"><code><span class="t-k">$ </span>npm test
+✔ an unreachable product API opens the circuit, and calls stop reaching it
+✔ a definite refusal from a healthy dependency is not an outage
+✔ tenant and team scope known identifiers
+✔ viewer cannot mutate
+✔ idempotency returns same result and rejects changed arguments
+✔ optimistic version rejects stale write
+✔ approval is actor and exact-operation bound and single use
+✔ the address check refuses internal space, including IPv4-mapped IPv6 and shared space
+✔ a viewer cannot queue a job, and a member on the free plan gets PLAN_REQUIRED
+✔ job tools use the same pipeline: a structured error and an audit row
+✔ a successful job call is audited too
+✔ the job tools now spend rate-limit permits, and throttling is audited as throttled
+✔ draft_release_note carries one deadline, budget and route through both internal hops
+✔ the /mcp edge answers 401 with a WWW-Authenticate challenge, never a 500
+✔ a refused write releases its key, so the same key can be used again
+✔ publishing without an approval does not burn the operation key
+✔ an unclassified failure keeps the claim, because the outcome really is unknown
+✔ a completed operation is replayed and its work is not run twice
+✔ MCP discovery, tool call and resource read work end to end
+✔ a reservation that is never settled expires and frees its hold
+✔ a reservation is a ceiling: settlement never charges more than was reserved
+✔ a worker runs a release-report job for its owner, scoped to the owner’s team
+✔ a slow worker cannot complete a job that another worker has taken over
+✔ a job that keeps failing is retried, then dead-lettered with its reason
+✔ a job whose worker keeps crashing is dead-lettered instead of re-leased forever
+✔ the token bucket is shared: two replicas draw from one allowance
+✔ the token bucket refills over time
+✔ one member cannot hold every slot their organisation has
+✔ production refuses to start without its required settings, and says which is missing
+✔ rate limits per actor and releases org concurrency
+✔ budget reservation is atomic and reconciled
+✔ jobs are scoped, leased and completed durably
+✔ URL validation blocks private networks
+✔ composite hop prevents cycles, excess depth and budget overrun
+✔ a refused resource read is a structured not-found, the same as a page that does not exist
+ℹ tests 35
+ℹ pass 35
+ℹ fail 0</code></pre></div>
+  <p>All thirty-five pass. They check each control on its own with a fake clock or an injected resolver, and they drive the controls through the MCP server together, which is exactly the gap the table above measures.</p>
+  <div class="callout"><span class="tag">How to read this course</span><p>The same conventions as 102. <em>Captured run</em> blocks and every JSON-RPC frame come from running this repository, and excerpts are pulled from the source and re-wrapped. Where the code does not do what a chapter’s topic would suggest, the chapter says so and shows the evidence. Those findings are collected at the end of Chapter 10.</p></div>
+
+</section>
+
+<!-- ============ 01 ============ -->
+<section class="chapter" id="ch01">
+  <div class="eyebrow">Chapter 01 · Defend</div>
+  <h2>Trust boundaries</h2>
+  <p class="lede">Every layer in front of a database row is a decision about who is asking. Production means each one is checked, on every request, and none of them is a hint.</p>
+
+  <p>Reading the pipeline top to bottom, a call to a Teamspace tool passes seven questions. Each has a different owner and fails with a different code:</p>
+  <div class="tbl-wrap"><table><thead><tr><th scope="col">#</th><th scope="col">Question</th><th scope="col">Answered by</th><th scope="col">Failure</th></tr></thead><tbody><tr><th scope="row" class="lbl">1</th><td>Is this token genuine, unexpired and meant for this service?</td><td>Identity</td><td><code>UNAUTHORIZED</code></td></tr><tr><th scope="row" class="lbl">2</th><td>Is this person an active member?</td><td><code>actor()</code></td><td><code>UNAUTHORIZED</code></td></tr><tr><th scope="row" class="lbl">3</th><td>May they act at all, or only read?</td><td><code>writeAllowed()</code></td><td><code>FORBIDDEN</code></td></tr><tr><th scope="row" class="lbl">4</th><td>Does their plan include this feature?</td><td><code>entitlement()</code></td><td><code>PLAN_REQUIRED</code></td></tr><tr><th scope="row" class="lbl">5</th><td>Is this row in their organisation and team?</td><td>The query itself</td><td><code>NOT_FOUND</code></td></tr><tr><th scope="row" class="lbl">6</th><td>Did someone consent to <em>this exact</em> action?</td><td><code>useApproval()</code></td><td><code>APPROVAL_REQUIRED</code></td></tr><tr><th scope="row" class="lbl">7</th><td>Have we done this exact thing already?</td><td><code>once()</code></td><td>stored result, or <code>IDEMPOTENCY_CONFLICT</code></td></tr></tbody></table></div>
+  <p>Questions 3 and 4 are the pair that gets confused most. A <strong>role</strong> answers &ldquo;what may this person do to our data?&rdquo;. A <strong>plan</strong> answers &ldquo;what did this customer buy?&rdquo;. Neither implies the other: a viewer on the Pro plan still cannot write, and an admin on the free plan still cannot start a job. The error message for a plan failure even says so: <em>Data permissions still apply</em>.</p>
+  <div class="panel" data-w="tabs"><div class="panel-hd"><h3 class="ph">Interactive · The checks, as code</h3></div><div class="panel-bd"><section data-tab="Actor, role, plan"><div class="cap"><b>src/policy.ts</b><span>three small functions</span></div><pre class="code prod" tabindex="0"><code><span class="t-k">export</span> <span class="t-k">async</span> <span class="t-k">function</span> actor(db: Sql, subject: string): Promise&lt;Actor&gt; {
+  <span class="t-k">const</span> a = (
+    <span class="t-k">await</span> db.query&lt;Actor&gt;(<span class="t-s">'SELECT * FROM members WHERE id=$1 AND active=true'</span>, [
+      subject,
+    ])
+  ).rows[<span class="t-n">0</span>];
+  <span class="t-k">if</span> (!a)
+    <span class="t-k">throw</span> <span class="t-k">new</span> Fault(<span class="t-s">'UNAUTHORIZED'</span>, <span class="t-s">'Your session is no longer authorized.'</span>, <span class="t-n">401</span>);
+  <span class="t-k">return</span> a;
+}
+
+<span class="t-k">export</span> <span class="t-k">function</span> writeAllowed(a: Actor) {
+  <span class="t-k">if</span> (a.role === <span class="t-s">'viewer'</span>)
+    <span class="t-k">throw</span> <span class="t-k">new</span> Fault(
+      <span class="t-s">'FORBIDDEN'</span>,
+      <span class="t-s">'Your role can read but cannot change this team’s work.'</span>,
+      <span class="t-n">403</span>,
+    );
+}
+
+<span class="t-k">export</span> <span class="t-k">function</span> entitlement(a: Actor, feature: string) {
+  <span class="t-k">if</span> (a.tier !== <span class="t-s">'pro'</span>)
+    <span class="t-k">throw</span> <span class="t-k">new</span> Fault(
+      <span class="t-s">'PLAN_REQUIRED'</span>,
+      <span class="t-s">`${feature} requires the Pro plan. Data permissions still apply.`</span>,
+      <span class="t-n">403</span>,
+    );
+}</code></pre><p class="figcap">The actor row is the single source of organisation, team, role and plan. Nothing about the caller is taken from the request body.</p></section><section data-tab="Scope in the query"><div class="cap"><b>src/product.ts</b><span>the boundary is in the WHERE clause</span></div><pre class="code prod" tabindex="0"><code><span class="t-k">async</span> getTask(a: Actor, taskId: string) {
+  <span class="t-k">const</span> t = (
+    <span class="t-k">await</span> <span class="t-k">this</span>.db.query(<span class="t-s">'SELECT * FROM tasks WHERE id=$1 AND org=$2 AND team=$3'</span>, [
+      taskId,
+      a.org,
+      a.team,
+    ])
+  ).rows[<span class="t-n">0</span>];
+  <span class="t-k">if</span> (!t) <span class="t-k">throw</span> <span class="t-k">new</span> Fault(<span class="t-s">'NOT_FOUND'</span>, <span class="t-s">'Task not found in your team.'</span>, <span class="t-n">404</span>);
+  <span class="t-k">return</span> t;
+}</code></pre><p class="figcap"><code>org=$2 AND team=$3</code> come from the actor. A task in another team returns the same <code>NOT_FOUND</code> as a task that does not exist.</p></section></div></div>
+  <div class="callout"><span class="tag">Visibility is not authorisation</span><p>The tool list is identical for every caller. A viewer sees <code>create_task</code>, an admin on the free plan sees <code>start_release_job</code>. Hiding a tool would be a usability nicety and would protect nothing, because a caller can name any tool. Every invocation runs all seven questions again.</p></div>
+
+  <h3>Attack the boundary</h3>
+  <p>Each tab is one attempt to cross a line, with the answer the real code gives. The first four were captured by calling the product classes directly; the last two are live MCP responses.</p>
+  <div class="panel" data-w="tabs"><div class="panel-hd"><h3 class="ph">Interactive · Try to get across</h3></div><div class="panel-bd"><section data-tab="Another tenant"><p><span class="chip warn">NOT_FOUND</span> <span class="chip info">404</span></p><div class="fr"><p class="frame-tag from-prod">eve.getTask("task-1") · captured</p><pre class="frame-json from-prod" tabindex="0"><code>{ <span class="t-p">"code"</span>: <span class="t-s">"NOT_FOUND"</span>, <span class="t-p">"status"</span>: <span class="t-n">404</span>, <span class="t-p">"retryable"</span>: <span class="t-k">false</span>,
+  <span class="t-p">"message"</span>: <span class="t-s">"Task not found in your team."</span> }</code></pre></div><p>Eve knows the id. It makes no difference: the row is filtered out by her organisation before anything else looks at it.</p></section><section data-tab="Smuggle a tenant"><p><span class="chip warn">schema error</span></p><div class="fr"><p class="frame-tag from-prod">createTaskSchema.safeParse({ …, org: "rival" }) · captured</p><pre class="frame-json from-prod" tabindex="0"><code>unrecognized_keys: Unrecognized key: "org"</code></pre></div><p>There is no field to smuggle it into, and the strict schema refuses one that is invented.</p></section><section data-tab="Write as a viewer"><p><span class="chip no">FORBIDDEN</span> <span class="chip info">403</span></p><div class="fr"><p class="frame-tag from-prod">viewer.createTask(…) · captured</p><pre class="frame-json from-prod" tabindex="0"><code>{ <span class="t-p">"code"</span>: <span class="t-s">"FORBIDDEN"</span>, <span class="t-p">"status"</span>: <span class="t-n">403</span>, <span class="t-p">"retryable"</span>: <span class="t-k">false</span>,
+  <span class="t-p">"message"</span>: <span class="t-s">"Your role can read but cannot change this team’s work."</span> }</code></pre></div><p>The role check comes before the schema is even parsed, so a viewer learns nothing about what a valid call looks like.</p></section><section data-tab="Assign across teams"><p><span class="chip no">INVALID_ASSIGNEE</span> <span class="chip info">400</span></p><div class="fr"><p class="frame-tag from-prod">alice.createTask({ assignee: "sam" }) · captured</p><pre class="frame-json from-prod" tabindex="0"><code>{ <span class="t-p">"code"</span>: <span class="t-s">"INVALID_ASSIGNEE"</span>, <span class="t-p">"status"</span>: <span class="t-n">400</span>,
+  <span class="t-p">"message"</span>: <span class="t-s">"Choose an active member of this team."</span> }</code></pre></div><p>Even a value the caller is allowed to supply is checked against their own scope.</p></section><section data-tab="Free plan, job"><p><span class="chip no">PLAN_REQUIRED</span> <span class="chip ok">structured and audited</span></p><div class="fr"><p class="frame-tag from-server">tools/call start_release_job as eve · captured over HTTP</p><pre class="frame-json from-server" tabindex="0"><code>{
+  <span class="t-p">"code"</span>: <span class="t-s">"PLAN_REQUIRED"</span>,
+  <span class="t-p">"message"</span>: <span class="t-s">"Background jobs requires the Pro plan. Data permissions still apply."</span>,
+  <span class="t-p">"retryable"</span>: <span class="t-k">false</span>,
+  <span class="t-p">"traceId"</span>: <span class="t-s">"506ef18f-075e-4c37-bce2-09c32b4b576a"</span>
+}</code></pre></div><p>The refusal carries a stable <code>code</code>, a <code>retryable</code> flag and a <code>traceId</code> that matches an audit row, like every other tool. (An earlier version of this handler skipped <code>execute()</code>, so the SDK flattened the fault to a plain sentence and no audit row existed. Every tool now goes through <code>guarded()</code>.)</p></section><section data-tab="Viewer, job"><p><span class="chip no">FORBIDDEN</span> <span class="chip info">403</span></p><div class="fr"><p class="frame-tag from-server">tools/call start_release_job as viewer · captured over HTTP</p><pre class="frame-json from-server" tabindex="0"><code>{
+  <span class="t-p">"code"</span>: <span class="t-s">"FORBIDDEN"</span>,
+  <span class="t-p">"message"</span>: <span class="t-s">"Your role can read but cannot change this team’s work."</span>,
+  <span class="t-p">"retryable"</span>: <span class="t-k">false</span>,
+  <span class="t-p">"traceId"</span>: <span class="t-s">"cc49deff-b46c-4ef3-8195-e041291e62fc"</span>
+}</code></pre></div><p>A viewer is on the Pro plan, so the entitlement check alone would pass. The role check is what refuses. Job creation used to check only the plan; it now asks both questions, like every other write.</p></section></div></div>
+  <div class="spec" data-label="Controlled failure"><p>Treat tool discovery as authorisation, or accept <code>org</code> from arguments. Both are covered in the tests by cross-tenant reads returning <code>NOT_FOUND</code>. The failure to induce is the second one: add <code>org</code> to a schema and see that the read query no longer needs the actor, which is the moment a tenant boundary becomes a suggestion.</p></div>
+
+</section>
+
+<!-- ============ 02 ============ -->
+<section class="chapter" id="ch02">
+  <div class="eyebrow">Chapter 02 · Defend</div>
+  <h2>Fairness and limits</h2>
+  <p class="lede">One noisy caller must not be able to starve everyone else. A limiter decides who waits, and where it lives decides whether it works.</p>
+
+  <p><code>FairLimiter</code> makes two decisions on every call. First, does this <em>actor</em> have tokens left in their bucket? Second, does this <em>organisation</em> have a free concurrency slot? The bucket handles bursts over time. The slot cap handles too many things happening at once.</p>
+  <div class="cap"><b>src/production.ts</b><span>FairLimiter (concurrency, per process) and SharedRate (the token bucket, shared)</span></div><pre class="code server" tabindex="0"><code><span class="t-k">export</span> <span class="t-k">class</span> FairLimiter {
+  <span class="t-k">private</span> buckets = <span class="t-k">new</span> Map&lt;string, Bucket&gt;();
+  <span class="t-k">private</span> active = <span class="t-k">new</span> Map&lt;string, number&gt;();
+  <span class="t-k">private</span> activeBy = <span class="t-k">new</span> Map&lt;string, number&gt;();
+  <span class="t-k">constructor</span>(
+    <span class="t-k">public</span> capacity = <span class="t-n">10</span>,
+    <span class="t-k">public</span> refillPerSecond = <span class="t-n">2</span>,
+    <span class="t-k">public</span> concurrency = <span class="t-n">3</span>,
+    <span class="t-k">private</span> now = () =&gt; Date.now(),
+    <span class="t-k">private</span> options: LimiterOptions = {},
+  ) {}
+  enter(a: Actor, cost = <span class="t-n">1</span>) {
+    <span class="t-k">const</span> key = <span class="t-s">`${a.org}:${a.id}`</span>,
+      now = <span class="t-k">this</span>.now(),
+      b = <span class="t-k">this</span>.buckets.get(key) ?? { tokens: <span class="t-k">this</span>.capacity, at: now };
+    b.tokens = Math.min(
+      <span class="t-k">this</span>.capacity,
+      b.tokens + ((now - b.at) / <span class="t-n">1000</span>) * <span class="t-k">this</span>.refillPerSecond,
+    );
+    b.at = now;
+    <span class="t-c">// The bucket can be turned off when SharedRate (below) enforces the same limit for every replica.</span>
+    <span class="t-k">if</span> (<span class="t-k">this</span>.options.localBucket !== <span class="t-k">false</span> &amp;&amp; b.tokens &lt; cost)
+      <span class="t-k">throw</span> <span class="t-k">new</span> Fault(
+        <span class="t-s">'RATE_LIMITED'</span>,
+        <span class="t-s">'Your request allowance is temporarily exhausted. Retry later.'</span>,
+        <span class="t-n">429</span>,
+        <span class="t-k">true</span>,
+      );
+    <span class="t-k">const</span> orgActive = <span class="t-k">this</span>.active.get(a.org) ?? <span class="t-n">0</span>,
+      mine = <span class="t-k">this</span>.activeBy.get(key) ?? <span class="t-n">0</span>;
+    <span class="t-k">if</span> (orgActive &gt;= <span class="t-k">this</span>.concurrency)
+      <span class="t-k">throw</span> <span class="t-k">new</span> Fault(
+        <span class="t-s">'CONCURRENCY_LIMIT'</span>,
+        <span class="t-s">'This organization has too many operations in flight.'</span>,
+        <span class="t-n">429</span>,
+        <span class="t-k">true</span>,
+      );
+    <span class="t-c">// One member may not hold every slot their organisation has, so a colleague can always get in.</span>
+    <span class="t-k">if</span> (mine &gt;= (<span class="t-k">this</span>.options.perActor ?? Math.max(<span class="t-n">1</span>, <span class="t-k">this</span>.concurrency - <span class="t-n">1</span>)))
+      <span class="t-k">throw</span> <span class="t-k">new</span> Fault(
+        <span class="t-s">'CONCURRENCY_LIMIT'</span>,
+        <span class="t-s">'You have too many operations in flight.'</span>,
+        <span class="t-n">429</span>,
+        <span class="t-k">true</span>,
+      );
+    b.tokens -= cost;
+    <span class="t-k">this</span>.buckets.set(key, b);
+    <span class="t-k">this</span>.active.set(a.org, orgActive + <span class="t-n">1</span>);
+    <span class="t-k">this</span>.activeBy.set(key, mine + <span class="t-n">1</span>);
+    <span class="t-k">let</span> left = <span class="t-k">false</span>;
+    <span class="t-k">return</span> () =&gt; {
+      <span class="t-k">if</span> (!left) {
+        left = <span class="t-k">true</span>;
+        <span class="t-k">this</span>.active.set(a.org, Math.max(<span class="t-n">0</span>, (<span class="t-k">this</span>.active.get(a.org) ?? <span class="t-n">1</span>) - <span class="t-n">1</span>));
+        <span class="t-k">this</span>.activeBy.set(key, Math.max(<span class="t-n">0</span>, (<span class="t-k">this</span>.activeBy.get(key) ?? <span class="t-n">1</span>) - <span class="t-n">1</span>));
+      }
+    };
+  }
+}
+
+<span class="t-k">export</span> <span class="t-k">class</span> SharedRate {
+  <span class="t-k">constructor</span>(
+    <span class="t-k">public</span> db: Sql,
+    <span class="t-k">public</span> capacity = <span class="t-n">10</span>,
+    <span class="t-k">public</span> refillPerSecond = <span class="t-n">2</span>,
+  ) {}
+  <span class="t-k">async</span> take(a: Actor, cost = <span class="t-n">1</span>) {
+    <span class="t-k">const</span> denied = () =&gt;
+      <span class="t-k">new</span> Fault(
+        <span class="t-s">'RATE_LIMITED'</span>,
+        <span class="t-s">'Your request allowance is temporarily exhausted. Retry later.'</span>,
+        <span class="t-n">429</span>,
+        <span class="t-k">true</span>,
+      );
+    <span class="t-k">if</span> (cost &gt; <span class="t-k">this</span>.capacity) <span class="t-k">throw</span> denied();
+    <span class="t-k">const</span> refilled =
+      <span class="t-s">'LEAST($2::float8, rate_buckets.tokens + EXTRACT(EPOCH FROM (now() - rate_buckets.at)) * $4::float8)'</span>;
+    <span class="t-k">const</span> r = <span class="t-k">await</span> <span class="t-k">this</span>.db.query(
+      <span class="t-s">`INSERT INTO rate_buckets(key,tokens,at) VALUES($1,$2::float8-$3::float8,now()) ON CONFLICT (key) DO UPDATE SET tokens=${refilled}-$3::float8, at=now() WHERE ${refilled}&gt;=$3::float8 RETURNING tokens`</span>,
+      [<span class="t-s">`${a.org}:${a.id}`</span>, <span class="t-k">this</span>.capacity, cost, <span class="t-k">this</span>.refillPerSecond],
+    );
+    <span class="t-k">if</span> (!r.rows.length) <span class="t-k">throw</span> denied();
+  }
+}</code></pre>
+  <p>Two limiters work together. <code>SharedRate</code> is the <em>token bucket</em>: one SQL statement refills the caller’s bucket from the elapsed time and spends from it, or refuses, and the row lock makes that atomic across processes, so the allowance is one number however many replicas serve the traffic. <code>FairLimiter</code> keeps the <em>concurrency</em> caps in memory, per process, because they protect this process from too much at once: an organisation may have three calls in flight and one member two. <code>enter()</code> refuses with <code>CONCURRENCY_LIMIT</code> when either cap is reached and returns a function that gives the slot back. Every limit error is marked retryable, because waiting fixes it.</p>
+
+  <div class="panel sim" id="sim-limiter"><div class="panel-hd"><h3 class="ph">Interactive · The limiter on a virtual clock</h3><div class="ctl"><button class="btn ghost" type="button" id="lm-reset">Reset</button></div></div><div class="panel-bd">
+    <div class="fields">
+      <label class="field">Who calls<select id="lm-who"><option value="alice">alice (acme)</option><option value="bob">bob (acme)</option><option value="eve">eve (rival)</option></select></label>
+      <label class="field">Cost<select id="lm-cost"><option value="1">1 (a read)</option><option value="2">2 (a write)</option><option value="3">3 (import_url)</option></select></label>
+      <label class="field"><span><input type="checkbox" id="lm-leak"> Forget to call <code>leave()</code></span></label>
+    </div>
+    <div class="ctl" style="margin-bottom:14px">
+      <button class="btn" type="button" id="lm-enter">Call (holds a slot)</button>
+      <button class="btn ghost" type="button" id="lm-release">Finish the oldest call</button>
+      <button class="btn ghost" type="button" id="lm-tick">Advance 1 second</button>
+    </div>
+    <p id="lm-verdict" role="status"></p>
+    <div class="readout" id="lm-read"></div>
+    <p class="figcap">Configured small so limits are easy to hit: bucket capacity 3, refill 1 token a second, 3 concurrent calls per organisation and 2 per member (the repo’s defaults are 10 and 2 for the bucket). A port of the bucket arithmetic and of <code>FairLimiter.enter()</code>. In the repo the bucket is <code>SharedRate</code>; the sums are the same.</p></div></div>
+
+  <h3>What the simulator shows, and what the code does</h3>
+  <ul>
+    <li><strong>Tenants are isolated, and colleagues are protected from each other.</strong> Call as Alice twice: she now holds two of Acme’s three slots, the most one member may hold. A third call by Alice is refused with <code>You have too many operations in flight</code>, and Bob still gets in. Fill the last slot as Bob and the organisation is full. Eve, in another organisation, goes straight through. Before this was fixed one member could take every slot and lock out their whole team.</li>
+    <li><strong>A leaked permit is a lockout.</strong> Tick <em>Forget to call leave()</em> and make two calls. The slots never come back and the member is locked out until the process restarts. This is why <code>guarded()</code> releases inside a <code>finally</code>. Every acquire has exactly one release on every path, including the throwing ones.</li>
+    <li><strong>The bucket only charges for admitted calls.</strong> A call refused for concurrency does not spend tokens.</li>
+  </ul>
+  <div class="callout ok"><span class="tag">Fixed in this repo</span><p><strong>The token bucket now lives in PostgreSQL.</strong> It used to be a <code>Map</code> in each process, so three replicas gave three times the limit and every restart reset it. <code>SharedRate</code> keeps one bucket per member in the <code>rate_buckets</code> table. The concurrency caps stay per process on purpose: they exist to protect <em>this</em> process, so per-replica is the right scope for them. The test <code>the token bucket is shared: two replicas draw from one allowance</code> puts two limiter instances on one database and shows they spend a single allowance. The <code>ioredis</code> dependency in <code>package.json</code> is still unused and can be removed. A Redis-backed bucket would be the way to take this load off the database at high volume.</p></div>
+  <p>Two more facts about placement. The limiter runs <em>after</em> <code>actor()</code>, so every call, even one about to be refused, has already cost a database read; a flood of requests is cheaper to stop earlier. The job tools pay too: starting a job costs 2 and reading one costs 1. And because the shared bucket is a database statement per call, put a cheap limit at the edge in front of it for floods, as Chapter 10 notes.</p>
+  <p>You can see the limiter act on a live server. A captured burst of sixteen sequential <code>get_task</code> calls, after two <code>import_url</code> calls had already spent six of the ten tokens, came back:</p>
+  <div class="run"><div class="run-hd"><span>Captured run</span><span>captured 2026-09-20 · timing-dependent</span></div><pre tabindex="0"><code><span class="t-k">$ </span>16 × tools/call get_task, one caller, as fast as the client can send
+ok ok ok ok RATE_LIMITED RATE_LIMITED RATE_LIMITED RATE_LIMITED ok RATE_LIMITED RATE_LIMITED RATE_LIMITED RATE_LIMITED RATE_LIMITED RATE_LIMITED RATE_LIMITED</code></pre></div>
+  <p>Four succeed (ten tokens, minus six already spent), the bucket empties, and one more gets through when enough refill has arrived at 2 tokens per second. The exact pattern depends on timing; the simulator above is the deterministic version.</p>
+
+</section>
+
+<!-- ============ 03 ============ -->
+<section class="chapter" id="ch03">
+  <div class="eyebrow">Chapter 03 · Defend</div>
+  <h2>Budgets and entitlements</h2>
+  <p class="lede">A plan says a feature is available. A budget says whether this organisation can afford this call right now. They answer different questions and fail differently.</p>
+
+  <p>Rate limits protect the server’s capacity. A <strong>budget</strong> protects the customer’s wallet, and yours. Teamspace tracks it as three numbers per organisation: <code>allowance</code> (what they may spend), <code>spent</code> (what is settled) and <code>reserved</code> (what running calls have claimed). The interesting part is the reservation.</p>
+  <div class="cap"><b>src/production.ts</b><span>Budget: reserve first, reconcile after</span></div><pre class="code server" tabindex="0"><code><span class="t-k">export</span> <span class="t-k">class</span> Budget {
+  <span class="t-k">constructor</span>(
+    <span class="t-k">public</span> db: Sql,
+    <span class="t-k">public</span> ttlSeconds = <span class="t-n">300</span>,
+  ) {}
+  <span class="t-k">async</span> reserve(a: Actor, estimate: number) {
+    <span class="t-k">if</span> (!Number.isInteger(estimate) || estimate &lt; <span class="t-n">1</span>)
+      <span class="t-k">throw</span> <span class="t-k">new</span> Fault(<span class="t-s">'INVALID_COST'</span>, <span class="t-s">'Estimate must be a positive integer.'</span>);
+    <span class="t-k">await</span> <span class="t-k">this</span>.sweep(a.org);
+    <span class="t-c">// Check, hold and record in ONE statement: a crash cannot leave a hold that has no reservation row.</span>
+    <span class="t-k">const</span> reservation = id();
+    <span class="t-k">const</span> r = <span class="t-k">await</span> <span class="t-k">this</span>.db.query(
+      <span class="t-s">`WITH held AS (UPDATE usage SET reserved=reserved+$1 WHERE org=$2 AND spent+reserved+$1&lt;=allowance RETURNING org) INSERT INTO reservations(id,org,amount,expires_at) SELECT $3,$2,$1,now()+make_interval(secs=&gt;$4::float8) FROM held RETURNING id`</span>,
+      [estimate, a.org, reservation, <span class="t-k">this</span>.ttlSeconds],
+    );
+    <span class="t-k">if</span> (!r.rows.length)
+      <span class="t-k">throw</span> <span class="t-k">new</span> Fault(
+        <span class="t-s">'BUDGET_EXCEEDED'</span>,
+        <span class="t-s">'The organization budget cannot reserve this work.'</span>,
+        <span class="t-n">429</span>,
+      );
+    <span class="t-k">return</span> reservation;
+  }
+  <span class="t-c">// Release holds whose owner never settled them (a crash, a lost connection).</span>
+  <span class="t-k">async</span> sweep(org: string) {
+    <span class="t-k">await</span> <span class="t-k">this</span>.db.query(
+      <span class="t-s">`WITH gone AS (UPDATE reservations SET state='expired' WHERE org=$1 AND state='reserved' AND expires_at&lt;now() RETURNING amount) UPDATE usage SET reserved=reserved-(SELECT COALESCE(sum(amount),0) FROM gone)::int WHERE org=$1`</span>,
+      [org],
+    );
+  }
+  <span class="t-k">async</span> reconcile(a: Actor, reservation: string, actual: number) {
+    <span class="t-k">const</span> r = (
+      <span class="t-k">await</span> <span class="t-k">this</span>.db.query(
+        <span class="t-s">`SELECT amount,state FROM reservations WHERE id=$1 AND org=$2 AND state IN ('reserved','expired')`</span>,
+        [reservation, a.org],
+      )
+    ).rows[<span class="t-n">0</span>];
+    <span class="t-k">if</span> (!r)
+      <span class="t-k">throw</span> <span class="t-k">new</span> Fault(
+        <span class="t-s">'INVALID_RESERVATION'</span>,
+        <span class="t-s">'Reservation is missing or already settled.'</span>,
+        <span class="t-n">409</span>,
+      );
+    <span class="t-k">const</span> claimed = <span class="t-k">await</span> <span class="t-k">this</span>.db.query(
+      <span class="t-s">`UPDATE reservations SET actual=$1,state='settled' WHERE id=$2 AND org=$3 AND state=$4 RETURNING id`</span>,
+      [actual, reservation, a.org, r.state],
+    );
+    <span class="t-k">if</span> (!claimed.rows.length)
+      <span class="t-k">throw</span> <span class="t-k">new</span> Fault(
+        <span class="t-s">'INVALID_RESERVATION'</span>,
+        <span class="t-s">'Reservation is missing or already settled.'</span>,
+        <span class="t-n">409</span>,
+      );
+    <span class="t-c">// A reservation is a ceiling: callers bound their work by it, and settlement never charges more.</span>
+    <span class="t-k">const</span> charge = Math.min(actual, r.amount);
+    <span class="t-k">if</span> (r.state === <span class="t-s">'reserved'</span>)
+      <span class="t-k">await</span> <span class="t-k">this</span>.db.query(
+        <span class="t-s">'UPDATE usage SET reserved=reserved-$1,spent=spent+$2 WHERE org=$3'</span>,
+        [r.amount, charge, a.org],
+      );
+    <span class="t-k">else</span>
+      <span class="t-k">await</span> <span class="t-k">this</span>.db.query(<span class="t-s">'UPDATE usage SET spent=spent+$1 WHERE org=$2'</span>, [
+        charge,
+        a.org,
+      ]); <span class="t-c">// its hold was already released by the sweep</span>
+  }
+}</code></pre>
+  <p><code>reserve()</code> is one conditional statement: <code>UPDATE usage SET reserved = reserved + $1 WHERE org = $2 AND spent + reserved + $1 &lt;= allowance</code>. If no row is updated, the allowance cannot cover it and you get <code>BUDGET_EXCEEDED</code>. Because the check and the increment are the same statement, two concurrent calls cannot both take the last unit. A separate read-then-write would have exactly that race. The same statement inserts the reservation row (a data-modifying CTE), so a crash cannot leave a hold that has no record. <code>reconcile()</code> later replaces the estimate with the real cost and releases the hold, charging at most what was reserved.</p>
+  <div class="run"><div class="run-hd"><span>Captured run</span><span>captured 2026-09-20 · memory database</span></div><pre tabindex="0"><code><span class="t-k">$ </span>Promise.allSettled([reserve(600), reserve(600), reserve(300)])   allowance 1000
+reserved
+BUDGET_EXCEEDED
+reserved
+
+usage: { spent: 0, reserved: 900, allowance: 1000 }</code></pre></div>
+  <p>Three concurrent reservations against a 1000 allowance: the first and third fit (900), the second does not. A caution on that result. PGlite runs one query at a time, so the run above demonstrates the outcome, not the concurrency. On a real PostgreSQL the guarantee comes from the row lock the <code>UPDATE</code> takes.</p>
+
+  <div class="panel sim" id="sim-budget"><div class="panel-hd"><h3 class="ph">Interactive · Reserve, then settle</h3><div class="ctl"><button class="btn ghost" type="button" id="bg-reset">Reset</button></div></div><div class="panel-bd">
+    <div class="fields">
+      <label class="field">Estimate<input type="number" id="bg-est" value="400" min="1" max="1000" step="50"></label>
+      <label class="field">Actual cost when settled<input type="number" id="bg-act" value="120" min="0" max="2000" step="20"></label>
+    </div>
+    <div class="ctl" style="margin-bottom:14px"><button class="btn" type="button" id="bg-res">Reserve the estimate</button><button class="btn ghost" type="button" id="bg-set">Settle the oldest reservation</button><button class="btn ghost" type="button" id="bg-time">Let 6 minutes pass</button></div>
+    <p id="bg-verdict" role="status"></p>
+    <div class="readout" id="bg-read"></div>
+    <div class="bar" aria-hidden="true"><i id="bg-bar1"></i></div>
+    <ul class="log" id="bg-log"></ul>
+    <p class="figcap">Organisation acme, allowance 1000 (rival has 100). A port of <code>Budget.reserve()</code> and <code>reconcile()</code>. Settling a reservation twice, or one that does not exist, is <code>INVALID_RESERVATION</code>. Reservations expire after 5 minutes. Try settling with an actual above the estimate, or reserving, letting time pass, then reserving again.</p></div></div>
+
+  <h3>What is priced, and what is not</h3>
+  <div class="cap"><b>src/mcp.ts</b><span>import_url: the only tool that uses the budget</span></div><pre class="code server" tabindex="0"><code>server.registerTool(
+  <span class="t-s">'import_url'</span>,
+  {
+    description:
+      <span class="t-s">'Fetch bounded public HTTPS content for review. Returned text remains untrusted and is never published automatically.'</span>,
+    inputSchema: z
+      .object({
+        url: z.string().url(),
+        estimatedCost: z.number().int().min(<span class="t-n">1</span>).max(<span class="t-n">100</span>).<span class="t-k">default</span>(<span class="t-n">10</span>),
+      })
+      .strict(),
+    annotations: { readOnlyHint: <span class="t-k">true</span> },
+  },
+  ({ url, estimatedCost }) =&gt;
+    guarded(
+      <span class="t-s">'import_url'</span>,
+      <span class="t-n">3</span>,
+      <span class="t-k">async</span> (a) =&gt; {
+        <span class="t-k">let</span> reservation = <span class="t-s">''</span>;
+        <span class="t-k">try</span> {
+          reservation = <span class="t-k">await</span> production.budget.reserve(a, estimatedCost);
+          <span class="t-c">// The estimate is also the size budget, in KB, so the work can never cost more than was reserved.</span>
+          <span class="t-k">const</span> text = <span class="t-k">await</span> production.importer.fetch(
+            url,
+            <span class="t-k">undefined</span>,
+            Math.min(production.importer.maxBytes, estimatedCost * <span class="t-n">1000</span>),
+          );
+          <span class="t-k">await</span> production.budget.reconcile(
+            a,
+            reservation,
+            Math.max(<span class="t-n">1</span>, Math.ceil(text.length / <span class="t-n">1000</span>)),
+          );
+          <span class="t-k">return</span> { url, text };
+        } <span class="t-k">catch</span> (e) {
+          <span class="t-k">if</span> (reservation)
+            <span class="t-k">await</span> production.budget.reconcile(a, reservation, <span class="t-n">0</span>).<span class="t-k">catch</span>(() =&gt; {});
+          <span class="t-k">throw</span> e;
+        }
+      },
+      (d, traceId) =&gt; ({
+        text: d.text,
+        structured: {
+          url: d.url,
+          text: d.text,
+          trust: <span class="t-s">'untrusted_external_content'</span>,
+          traceId,
+        },
+      }),
+    ),
+);</code></pre>
+  <p>Only <code>import_url</code> reserves anything. It estimates a cost (default 10, at most 100), does the fetch, then settles at <code>ceil(length / 1000)</code> or at zero if it failed. Every other tool costs nothing against the budget, which is a fair choice for cheap reads and a decision worth making deliberately rather than by omission.</p>
+  <ul>
+    <li><strong>A reservation is a ceiling.</strong> <code>reconcile()</code> records the real cost on the reservation but charges at most what was reserved, and the work is bounded by the same number: <code>import_url</code> treats <code>estimatedCost</code> as a size budget in KB and stops fetching past it. So the work cannot cost more than was reserved, and a caller who lowballs the estimate only gets a smaller fetch. In the simulator, settle with an actual above the estimate and see the charge capped.</li>
+    <li><strong>Holds expire.</strong> A reservation lives five minutes. The next <code>reserve()</code> for the organisation sweeps expired holds and releases them, so a process that dies between <code>reserve()</code> and <code>reconcile()</code> no longer locks up allowance for ever. If the work did finish and settles late, its real cost is still recorded, without releasing the hold twice. Try <em>Let 6 minutes pass</em>.</li>
+    <li><strong>Check, hold and record are one statement,</strong> so a crash cannot leave a hold with no reservation row for the sweeper to find.</li>
+  </ul>
+  <div class="callout"><span class="tag">Entitlement versus budget</span><p>Keep them separate in your head and your code. <strong>Entitlement</strong> is static for a billing period: Pro gets background jobs, free does not, and the answer is <code>PLAN_REQUIRED</code>. <strong>Budget</strong> is dynamic: it depletes with use, and the answer is <code>BUDGET_EXCEEDED</code>. Merging them produces the classic support ticket, &ldquo;it says I do not have access, but I paid&rdquo;, when the truth is &ldquo;you have used everything you paid for&rdquo;.</p></div>
+
+</section>
+
+<!-- ============ 04 ============ -->
+<section class="chapter" id="ch04">
+  <div class="eyebrow">Chapter 04 · Survive</div>
+  <h2>Retries and idempotency</h2>
+  <p class="lede">The dangerous failure is not the one that says no. It is the one that says nothing, when you cannot tell whether the work happened.</p>
+
+  <p>A network call can fail in two very different ways. It can fail <em>before</em> the work: nothing happened, and retrying is safe. Or it can fail <em>after</em>: the work happened, the response was lost, and retrying repeats it. From the caller’s side both look like a timeout. This is the ambiguous case, and it is the reason idempotency exists.</p>
+  <div class="cap"><b>src/api.ts</b><span>Downstream.call: a deadline, and retries only for reads</span></div><pre class="code server" tabindex="0"><code><span class="t-k">async</span> call(
+  subject: string,
+  operation: string,
+  args: unknown,
+  deadline = Date.now() + <span class="t-n">5000</span>,
+) {
+  <span class="t-k">const</span> kind =
+    [<span class="t-s">'search_tasks'</span>, <span class="t-s">'get_task'</span>, <span class="t-s">'create_task'</span>, <span class="t-s">'update_task'</span>].includes(operation) ?
+      <span class="t-s">'tasks'</span>
+    : <span class="t-s">'knowledge'</span>;
+  <span class="t-k">const</span> token = <span class="t-k">await</span> <span class="t-k">this</span>.identity.issue(subject, kind);
+  <span class="t-c">// A freshly scoped downstream token is used; the incoming MCP token is never forwarded.</span>
+  <span class="t-k">return</span> <span class="t-k">this</span>.breakers[kind].run(
+    () =&gt;
+      retry(
+        <span class="t-k">async</span> (signal) =&gt; {
+          <span class="t-k">let</span> response: Response;
+          <span class="t-k">try</span> {
+            response = <span class="t-k">await</span> fetch(<span class="t-s">`${this.urls[kind]}/invoke/${operation}`</span>, {
+              method: <span class="t-s">'POST'</span>,
+              headers: {
+                <span class="t-s">'Content-Type'</span>: <span class="t-s">'application/json'</span>,
+                Authorization: <span class="t-s">`Bearer ${token}`</span>,
+              },
+              body: JSON.stringify(args),
+              signal,
+            });
+          } <span class="t-k">catch</span> {
+            <span class="t-k">throw</span> <span class="t-k">new</span> Fault(
+              <span class="t-s">'DEPENDENCY_UNAVAILABLE'</span>,
+              <span class="t-s">'The product service is unavailable.'</span>,
+              <span class="t-n">503</span>,
+              <span class="t-k">true</span>,
+            );
+          }
+          <span class="t-k">const</span> body = (<span class="t-k">await</span> response.json()) <span class="t-k">as</span> any;
+          <span class="t-k">if</span> (!response.ok)
+            <span class="t-k">throw</span> <span class="t-k">new</span> Fault(
+              body.code,
+              body.message,
+              response.status,
+              body.retryable,
+            );
+          <span class="t-k">return</span> body;
+        },
+        {
+          deadline,
+          safe:
+            operation.startsWith(<span class="t-s">'search_'</span>) ||
+            operation.startsWith(<span class="t-s">'read_'</span>) ||
+            operation === <span class="t-s">'get_task'</span>,
+        },
+      ),
+    (e) =&gt; e instanceof Fault &amp;&amp; e.status &gt;= <span class="t-n">500</span>,
+  );
+}</code></pre>
+  <p>Read the last line. The <code>safe</code> flag is true only for <code>search_*</code>, <code>read_*</code> and <code>get_task</code>. A write is attempted once, and every attempt shares one five-second deadline. This layer refuses to guess about writes. The deeper protection is the operation key, which is what lets <em>you</em> retry a write yourself. Run all the strategies:</p>
+
+  <div class="panel sim" id="sim-lost"><div class="panel-hd"><h3 class="ph">Interactive · The response that never arrived</h3></div><div class="panel-bd">
+    <div class="ctl" style="margin-bottom:14px">
+      <button class="btn" type="button" data-s="giveup">Give up</button>
+      <button class="btn" type="button" data-s="newkey">Retry as a new call</button>
+      <button class="btn" type="button" data-s="samekey">Retry, same key</button>
+      <button class="btn" type="button" data-s="crash">Same key, server crashed mid-way</button>
+    </div>
+    <p id="ls-verdict" role="status"></p>
+    <ul class="log" id="ls-log"></ul>
+    <p class="figcap">Every run starts the same way: the client sends <code>create_task</code>, the server does the work, and the response is lost on the way back. Then the client picks a strategy.</p></div></div>
+
+  <div class="tbl-wrap"><table><thead><tr><th scope="col">Strategy</th><th scope="col">Tasks that exist</th><th scope="col">Verdict</th></tr></thead><tbody><tr><th scope="row" class="lbl">Give up</th><td>1</td><td>The user believes it failed. It succeeded. The state is right and the belief is wrong.</td></tr><tr><th scope="row" class="lbl">Retry as a new call</th><td><strong>2</strong></td><td>A duplicate. This is what idempotency keys exist to prevent.</td></tr><tr><th scope="row" class="lbl">Retry, same key</th><td>1</td><td>The stored result comes back and the client learns the truth.</td></tr><tr><th scope="row" class="lbl">Same key, crash between write and record</th><td>1</td><td><code>OUTCOME_UNKNOWN</code>. The server refuses to claim it knows. Inspect first.</td></tr></tbody></table></div>
+  <p>The last row is the honest edge of the pattern, and 102 Chapter 02 has the code. A key protects you when the server survives long enough to record its result. When it does not, the correct answer is to <em>look</em> before acting: search for the task, then decide.</p>
+  <div class="callout ok"><span class="tag">Fixed in this repo</span><p><strong>A refused write no longer burns its key.</strong> If the work inside <code>once()</code> throws a well-understood error (a stale version, a missing approval), the claim is deleted and the same key can be used again. An earlier version kept the claim, so a retry was told <code>OUTCOME_UNKNOWN</code> although nothing had been written; MCP 102 Chapter 11 has the captured output. An error the code cannot classify, such as a dropped connection, still keeps the claim. So after an ambiguous <em>timeout</em>, retry with the same key, and after a clear refusal, correct the call and send it again.</p></div>
+  <p>Two rules cover most of what goes wrong in practice. <strong>Bound every retry by a deadline</strong>, not just an attempt count, so a slow dependency cannot hold a request for minutes. And <strong>never retry what you cannot classify</strong>: validation, permission and conflict failures fail the same way every time, and retrying them only adds load.</p>
+
+</section>
+
+<!-- ============ 05 ============ -->
+<section class="chapter" id="ch05">
+  <div class="eyebrow">Chapter 05 · Survive</div>
+  <h2>Fallbacks and circuits</h2>
+  <p class="lede">When a dependency is failing, hammering it makes it worse and makes you slow. A circuit breaker stops the calls. A fallback decides what to say instead, and it must not lie.</p>
+
+  <p>Retries assume a failure is brief. When a dependency is genuinely down, each retry is one more request into a broken thing, each holding a connection and a slot while it waits for a timeout. A <strong>circuit breaker</strong> notices a run of failures and starts refusing immediately, without calling, for a cool-down period. Then it lets one call through to test the water.</p>
+  <div class="cap"><b>src/resilience.ts</b><span>CircuitBreaker: 12 lines, three states</span></div><pre class="code server" tabindex="0"><code><span class="t-k">export</span> <span class="t-k">class</span> CircuitBreaker {
+  failures = <span class="t-n">0</span>;
+  openedAt = <span class="t-n">0</span>;
+  <span class="t-k">constructor</span>(
+    <span class="t-k">public</span> threshold = <span class="t-n">3</span>,
+    <span class="t-k">public</span> recoveryMs = <span class="t-n">1000</span>,
+  ) {}
+  <span class="t-k">async</span> run&lt;T&gt;(
+    work: () =&gt; Promise&lt;T&gt;,
+    isFailure: (e: unknown) =&gt; boolean = () =&gt; <span class="t-k">true</span>,
+  ) {
+    <span class="t-k">if</span> (
+      <span class="t-k">this</span>.failures &gt;= <span class="t-k">this</span>.threshold &amp;&amp;
+      Date.now() - <span class="t-k">this</span>.openedAt &lt; <span class="t-k">this</span>.recoveryMs
+    )
+      <span class="t-k">throw</span> <span class="t-k">new</span> Fault(
+        <span class="t-s">'CIRCUIT_OPEN'</span>,
+        <span class="t-s">'Dependency is recovering. Try again later.'</span>,
+        <span class="t-n">503</span>,
+        <span class="t-k">true</span>,
+      );
+    <span class="t-k">try</span> {
+      <span class="t-k">const</span> r = <span class="t-k">await</span> work();
+      <span class="t-k">this</span>.failures = <span class="t-n">0</span>;
+      <span class="t-k">return</span> r;
+    } <span class="t-k">catch</span> (e) {
+      <span class="t-c">// A definite answer from a healthy dependency (a 404, a refusal) is not an outage: it must not open the circuit.</span>
+      <span class="t-k">if</span> (isFailure(e)) {
+        <span class="t-k">this</span>.failures++;
+        <span class="t-k">this</span>.openedAt = Date.now();
+      } <span class="t-k">else</span> <span class="t-k">this</span>.failures = <span class="t-n">0</span>;
+      <span class="t-k">throw</span> e;
+    }
+  }
+}</code></pre>
+  <p>There is no explicit state field. The three states are implied by two numbers. <strong>Closed</strong>: fewer failures than the threshold; calls pass. <strong>Open</strong>: at or above the threshold and less than <code>recoveryMs</code> since the last failure; calls are refused with <code>CIRCUIT_OPEN</code>, marked retryable. <strong>Half-open</strong>: at or above the threshold but the cool-down has passed; the next call is a probe. A success resets the count. A failure re-opens it.</p>
+  <div class="panel sim" id="sim-cb"><div class="panel-hd"><h3 class="ph">Interactive · A breaker with threshold 3 and a 1-second cool-down</h3><div class="ctl"><button class="btn ghost" type="button" id="cb-reset">Reset</button></div></div><div class="panel-bd">
+    <div class="ctl" style="margin-bottom:14px">
+      <button class="btn" type="button" id="cb-fail">Call (dependency is down)</button>
+      <button class="btn" type="button" id="cb-ok">Call (dependency is up)</button>
+      <button class="btn ghost" type="button" id="cb-500">Wait 500 ms</button>
+      <button class="btn ghost" type="button" id="cb-1100">Wait 1100 ms</button>
+    </div>
+    <div class="readout" id="cb-read"></div>
+    <ul class="log" id="cb-log"></ul>
+    <p class="figcap">A port of <code>CircuitBreaker.run()</code> on a virtual clock. Fail three times, then try a healthy call while it is open, then wait and try again.</p></div></div>
+  <div class="run"><div class="run-hd"><span>Captured run</span><span>captured 2026-09-20, reformatted from the raw log lines</span></div><pre tabindex="0"><code><span class="t-k">$ </span>the real class, fake clock
+t+0    call, dependency down  -&gt; boom
+t+0    call, dependency down  -&gt; boom
+t+0    call, dependency down  -&gt; boom
+t+0    call, dependency up    -&gt; CIRCUIT_OPEN
+t+500  call, dependency up    -&gt; CIRCUIT_OPEN
+t+1100 call, dependency up    -&gt; served</code></pre></div>
+  <div class="callout ok"><span class="tag">Fixed in this repo</span><p><strong>The breaker is wired in.</strong> It used to be defined in <code>src/resilience.ts</code> and used by nothing, with no test. <code>Downstream</code> now keeps one breaker per product API (tasks and knowledge) and wraps the retrying call in it. The breaker only counts <em>outages</em>: run() takes an <code>isFailure</code> test, and <code>Downstream</code> passes one that accepts unreachable hosts, 5xx answers and blown deadlines. A definite answer from a healthy dependency, such as <code>NOT_FOUND</code>, resets the count instead of adding to it, so a run of refusals cannot open the circuit. The counters are per process, like the concurrency caps, and that is the right scope for a breaker.</p></div>
+  <div class="cap"><b>src/api.ts</b><span>Downstream: one breaker per product API, around retry()</span></div><pre class="code server" tabindex="0"><code><span class="t-k">export</span> <span class="t-k">class</span> Downstream {
+  <span class="t-c">// One breaker per product API, shared by every request this process serves.</span>
+  <span class="t-k">private</span> breakers: Record&lt;<span class="t-s">'tasks'</span> | <span class="t-s">'knowledge'</span>, CircuitBreaker&gt;;
+  <span class="t-k">constructor</span>(
+    <span class="t-k">public</span> urls: { tasks: string; knowledge: string },
+    <span class="t-k">public</span> identity: Identity,
+    breaker: { threshold?: number; recoveryMs?: number } = {},
+  ) {
+    <span class="t-k">this</span>.breakers = {
+      tasks: <span class="t-k">new</span> CircuitBreaker(breaker.threshold, breaker.recoveryMs),
+      knowledge: <span class="t-k">new</span> CircuitBreaker(breaker.threshold, breaker.recoveryMs),
+    };
+  }
+  <span class="t-k">async</span> call(
+    subject: string,
+    operation: string,
+    args: unknown,
+    deadline = Date.now() + <span class="t-n">5000</span>,
+  ) {
+    <span class="t-k">const</span> kind =
+      [<span class="t-s">'search_tasks'</span>, <span class="t-s">'get_task'</span>, <span class="t-s">'create_task'</span>, <span class="t-s">'update_task'</span>].includes(operation) ?
+        <span class="t-s">'tasks'</span>
+      : <span class="t-s">'knowledge'</span>;
+    <span class="t-k">const</span> token = <span class="t-k">await</span> <span class="t-k">this</span>.identity.issue(subject, kind);
+    <span class="t-c">// A freshly scoped downstream token is used; the incoming MCP token is never forwarded.</span>
+    <span class="t-k">return</span> <span class="t-k">this</span>.breakers[kind].run(
+      () =&gt;
+        retry(
+          <span class="t-k">async</span> (signal) =&gt; {
+            <span class="t-k">let</span> response: Response;
+            <span class="t-k">try</span> {
+              response = <span class="t-k">await</span> fetch(<span class="t-s">`${this.urls[kind]}/invoke/${operation}`</span>, {
+                method: <span class="t-s">'POST'</span>,
+                headers: {
+                  <span class="t-s">'Content-Type'</span>: <span class="t-s">'application/json'</span>,
+                  Authorization: <span class="t-s">`Bearer ${token}`</span>,
+                },
+                body: JSON.stringify(args),
+                signal,
+              });
+            } <span class="t-k">catch</span> {
+              <span class="t-k">throw</span> <span class="t-k">new</span> Fault(
+                <span class="t-s">'DEPENDENCY_UNAVAILABLE'</span>,
+                <span class="t-s">'The product service is unavailable.'</span>,
+                <span class="t-n">503</span>,
+                <span class="t-k">true</span>,
+              );
+            }
+            <span class="t-k">const</span> body = (<span class="t-k">await</span> response.json()) <span class="t-k">as</span> any;
+            <span class="t-k">if</span> (!response.ok)
+              <span class="t-k">throw</span> <span class="t-k">new</span> Fault(
+                body.code,
+                body.message,
+                response.status,
+                body.retryable,
+              );
+            <span class="t-k">return</span> body;
+          },
+          {
+            deadline,
+            safe:
+              operation.startsWith(<span class="t-s">'search_'</span>) ||
+              operation.startsWith(<span class="t-s">'read_'</span>) ||
+              operation === <span class="t-s">'get_task'</span>,
+          },
+        ),
+      (e) =&gt; e instanceof Fault &amp;&amp; e.status &gt;= <span class="t-n">500</span>,
+    );
+  }
+}</code></pre>
+  <p>Two tests pin it: <code>an unreachable product API opens the circuit, and calls stop reaching it</code> (with a closed port, a threshold of two, and the other product API unaffected) and <code>a definite refusal from a healthy dependency is not an outage</code> (five refusals in a row, circuit still closed).</p>
+
+  <h3>A fallback is a promise about what you are returning</h3>
+  <p>When the primary path fails, there are four honest things a server can do, and a dishonest one. The rule that separates them: <strong>a fallback must declare its reduced quality</strong>, so the caller can decide whether that is good enough.</p>
+  <div class="tbl-wrap"><table><thead><tr><th scope="col">Fallback</th><th scope="col">What the caller gets</th><th scope="col">Honest if…</th></tr></thead><tbody><tr><th scope="row" class="lbl">Serve cached data</th><td>Older data</td><td>the response says it is stale, and how old</td></tr><tr><th scope="row" class="lbl">Return partial results</th><td>Some of what was asked</td><td>the response says which parts are missing</td></tr><tr><th scope="row" class="lbl">Degrade a feature</th><td>A simpler answer</td><td>the response says which capability was dropped</td></tr><tr><th scope="row" class="lbl">Fail fast with a clear code</th><td>Nothing</td><td>the code is retryable and the message says when to try again</td></tr><tr><th scope="row" class="lbl"><strong>Return stale data as if it were fresh</strong></th><td>A wrong answer that looks right</td><td><strong>never</strong></td></tr></tbody></table></div>
+  <p>The last row is the one to fear in an agent setting. A person shown stale data can see the timestamp and doubt it. A model shown stale data will build the next three steps on top of it. And never use retries or fallbacks to smooth over a permanent failure. An authorisation, validation or business-rule refusal is not an outage, and retrying or substituting hides it.</p>
+
+</section>
+
+<!-- ============ 06 ============ -->
+<section class="chapter" id="ch06">
+  <div class="eyebrow">Chapter 06 · Beyond the request</div>
+  <h2>Safe URL import</h2>
+  <p class="lede"><code>import_url</code> asks the server to fetch a web address on the caller’s behalf. That is a request to make your network reach somewhere you did not choose.</p>
+
+  <p>This is <em>server-side request forgery</em>. The attack is simple. A caller who cannot reach your database, your cloud metadata service or an admin panel asks <em>you</em> to fetch a URL pointing at one, and you dutifully return what you find. The fetch runs inside your network, with your network’s trust. A URL fetcher is a doorway, and this class exists to guard it.</p>
+  <div class="panel" data-w="tabs"><div class="panel-hd"><h3 class="ph">Interactive · The importer</h3></div><div class="panel-bd"><section data-tab="validate()"><div class="cap"><b>src/production.ts</b><span>run on the first URL and on every redirect</span></div><pre class="code server" tabindex="0"><code><span class="t-k">async</span> validate(raw: string) {
+  <span class="t-k">const</span> url = <span class="t-k">new</span> URL(raw);
+  <span class="t-k">if</span> (url.protocol !== <span class="t-s">'https:'</span>)
+    <span class="t-k">throw</span> <span class="t-k">new</span> Fault(<span class="t-s">'URL_REJECTED'</span>, <span class="t-s">'Only HTTPS URLs are allowed.'</span>);
+  <span class="t-k">if</span> (url.username || url.password)
+    <span class="t-k">throw</span> <span class="t-k">new</span> Fault(<span class="t-s">'URL_REJECTED'</span>, <span class="t-s">'Credentials in URLs are not allowed.'</span>);
+  <span class="t-k">const</span> answers = <span class="t-k">await</span> <span class="t-k">this</span>.resolve(url.hostname, { all: <span class="t-k">true</span> });
+  <span class="t-k">if</span> (!answers.length || answers.some((x) =&gt; privateAddress(x.address)))
+    <span class="t-k">throw</span> <span class="t-k">new</span> Fault(
+      <span class="t-s">'URL_REJECTED'</span>,
+      <span class="t-s">'The URL resolves to a private or local network.'</span>,
+    );
+  <span class="t-k">return</span> url;
+}</code></pre><p class="figcap">HTTPS only; no <code>user:pass@</code>; resolve the name to <em>all</em> its addresses; reject if <em>any</em> is private. A name that resolves to one public and one private address is refused.</p></section><section data-tab="fetch()"><div class="cap"><b>src/production.ts</b><span>redirects by hand, bounded bytes, a deadline</span></div><pre class="code server" tabindex="0"><code><span class="t-k">async</span> fetch(
+  raw: string,
+  signal = AbortSignal.timeout(<span class="t-n">5000</span>),
+  maxBytes = <span class="t-k">this</span>.maxBytes,
+) {
+  <span class="t-k">let</span> url = <span class="t-k">await</span> <span class="t-k">this</span>.validate(raw);
+  <span class="t-k">for</span> (<span class="t-k">let</span> n = <span class="t-n">0</span>; n &lt;= <span class="t-k">this</span>.maxRedirects; n++) {
+    <span class="t-k">const</span> r = <span class="t-k">await</span> fetch(url, {
+      redirect: <span class="t-s">'manual'</span>,
+      signal,
+      headers: { Accept: <span class="t-s">'text/html,text/plain'</span> },
+    });
+    <span class="t-k">if</span> (r.status &gt;= <span class="t-n">300</span> &amp;&amp; r.status &lt; <span class="t-n">400</span>) {
+      <span class="t-k">const</span> next = r.headers.get(<span class="t-s">'location'</span>);
+      <span class="t-k">if</span> (!next || n === <span class="t-k">this</span>.maxRedirects)
+        <span class="t-k">throw</span> <span class="t-k">new</span> Fault(<span class="t-s">'URL_REJECTED'</span>, <span class="t-s">'Redirect chain is invalid or too long.'</span>);
+      url = <span class="t-k">await</span> <span class="t-k">this</span>.validate(<span class="t-k">new</span> URL(next, url).href);
+      <span class="t-k">continue</span>;
+    }
+    <span class="t-k">if</span> (!r.ok)
+      <span class="t-k">throw</span> <span class="t-k">new</span> Fault(
+        <span class="t-s">'IMPORT_FAILED'</span>,
+        <span class="t-s">`Remote server returned HTTP ${r.status}.`</span>,
+        <span class="t-n">502</span>,
+        r.status &gt;= <span class="t-n">500</span>,
+      );
+    <span class="t-k">const</span> length = Number(r.headers.get(<span class="t-s">'content-length'</span>) ?? <span class="t-n">0</span>);
+    <span class="t-k">if</span> (length &gt; maxBytes)
+      <span class="t-k">throw</span> <span class="t-k">new</span> Fault(<span class="t-s">'TOO_LARGE'</span>, <span class="t-s">'Remote content exceeds the import limit.'</span>, <span class="t-n">413</span>);
+    <span class="t-k">const</span> reader = r.body?.getReader();
+    <span class="t-k">let</span> size = <span class="t-n">0</span>,
+      text = <span class="t-s">''</span>;
+    <span class="t-k">const</span> decoder = <span class="t-k">new</span> TextDecoder();
+    <span class="t-k">while</span> (reader) {
+      <span class="t-k">const</span> part = <span class="t-k">await</span> reader.read();
+      <span class="t-k">if</span> (part.done) <span class="t-k">break</span>;
+      size += part.value.length;
+      <span class="t-k">if</span> (size &gt; maxBytes) {
+        <span class="t-k">await</span> reader.cancel();
+        <span class="t-k">throw</span> <span class="t-k">new</span> Fault(
+          <span class="t-s">'TOO_LARGE'</span>,
+          <span class="t-s">'Remote content exceeds the import limit.'</span>,
+          <span class="t-n">413</span>,
+        );
+      }
+      text += decoder.decode(part.value, { stream: <span class="t-k">true</span> });
+    }
+    <span class="t-k">return</span> text
+      .replace(/&lt;script[\s\S]*?&lt;\/script&gt;/gi, <span class="t-s">''</span>)
+      .replace(/&lt;style[\s\S]*?&lt;\/style&gt;/gi, <span class="t-s">''</span>)
+      .replace(/&lt;[^&gt;]+&gt;/g, <span class="t-s">' '</span>)
+      .replace(/\s+/g, <span class="t-s">' '</span>)
+      .trim();
+  }
+  <span class="t-k">throw</span> <span class="t-k">new</span> Fault(<span class="t-s">'IMPORT_FAILED'</span>, <span class="t-s">'Import did not complete.'</span>, <span class="t-n">502</span>);
+}</code></pre><p class="figcap"><code>redirect: 'manual'</code> means every hop is re-validated. Bytes are counted as they stream, not trusted from a header. Scripts, styles and tags are stripped.</p></section><section data-tab="privateAddress()"><div class="cap"><b>src/production.ts</b><span>numeric ranges, and IPv6 as an allow-list</span></div><pre class="code server" tabindex="0"><code><span class="t-k">function</span> unmapIpv4(raw: string) {
+  <span class="t-k">const</span> ip = raw.toLowerCase().split(<span class="t-s">'%'</span>)[<span class="t-n">0</span>];
+  <span class="t-k">const</span> dotted = /^::(?:ffff:)?(\d+\.\d+\.\d+\.\d+)$/.exec(ip);
+  <span class="t-k">if</span> (dotted) <span class="t-k">return</span> dotted[<span class="t-n">1</span>];
+  <span class="t-k">const</span> hex = /^::ffff:([<span class="t-n">0</span>-9a-f]{<span class="t-n">1</span>,<span class="t-n">4</span>}):([<span class="t-n">0</span>-9a-f]{<span class="t-n">1</span>,<span class="t-n">4</span>})$/.exec(ip);
+  <span class="t-k">if</span> (hex) {
+    <span class="t-k">const</span> hi = parseInt(hex[<span class="t-n">1</span>], <span class="t-n">16</span>),
+      lo = parseInt(hex[<span class="t-n">2</span>], <span class="t-n">16</span>);
+    <span class="t-k">return</span> <span class="t-s">`${hi &gt;&gt; 8}.${hi &amp; 255}.${lo &gt;&gt; 8}.${lo &amp; 255}`</span>;
+  }
+  <span class="t-k">return</span> ip;
+}
+
+<span class="t-k">function</span> privateAddress(raw: string) {
+  <span class="t-k">const</span> ip = unmapIpv4(raw);
+  <span class="t-k">const</span> v4 = /^(\d{<span class="t-n">1</span>,<span class="t-n">3</span>})\.(\d{<span class="t-n">1</span>,<span class="t-n">3</span>})\.(\d{<span class="t-n">1</span>,<span class="t-n">3</span>})\.(\d{<span class="t-n">1</span>,<span class="t-n">3</span>})$/.exec(ip);
+  <span class="t-k">if</span> (v4) {
+    <span class="t-k">const</span> [a, b, c, d] = v4.slice(<span class="t-n">1</span>).map(Number);
+    <span class="t-k">if</span> ([a, b, c, d].some((n) =&gt; n &gt; <span class="t-n">255</span>)) <span class="t-k">return</span> <span class="t-k">true</span>;
+    <span class="t-k">return</span> (
+      a === <span class="t-n">0</span> ||
+      a === <span class="t-n">10</span> ||
+      a === <span class="t-n">127</span> ||
+      (a === <span class="t-n">100</span> &amp;&amp; b &gt;= <span class="t-n">64</span> &amp;&amp; b &lt;= <span class="t-n">127</span>) ||
+      (a === <span class="t-n">169</span> &amp;&amp; b === <span class="t-n">254</span>) ||
+      (a === <span class="t-n">172</span> &amp;&amp; b &gt;= <span class="t-n">16</span> &amp;&amp; b &lt;= <span class="t-n">31</span>) ||
+      (a === <span class="t-n">192</span> &amp;&amp; b === <span class="t-n">168</span>) ||
+      a &gt;= <span class="t-n">224</span>
+    );
+  }
+  <span class="t-k">if</span> (!ip.includes(<span class="t-s">':'</span>)) <span class="t-k">return</span> <span class="t-k">true</span>;
+  <span class="t-k">const</span> globalUnicast = /^[<span class="t-n">23</span>][<span class="t-n">0</span>-9a-f]{<span class="t-n">3</span>}:/.test(ip);
+  <span class="t-k">const</span> embedsIpv4 =
+    /^<span class="t-n">2002</span>:/.test(ip) || /^<span class="t-n">2001</span>:<span class="t-n">0</span>{<span class="t-n">0</span>,<span class="t-n">4</span>}:/.test(ip) || /^<span class="t-n">2001</span>:db8:/.test(ip);
+  <span class="t-k">return</span> !globalUnicast || embedsIpv4;
+}</code></pre><p class="figcap">Parse first, then compare. IPv4-mapped IPv6 is unwrapped to its IPv4 address before any check, and an IPv6 address must be global unicast (2000::/3) to pass.</p></section></div></div>
+  <p>The structure is right: validate before fetching, re-validate every redirect, cap size and time. Two live calls show the front door working:</p>
+  <div class="cols">
+    <div><div class="fr"><p class="frame-tag from-server">import_url { url: "http://example.com" } · captured</p><pre class="frame-json from-server" tabindex="0"><code>{
+  <span class="t-p">"code"</span>: <span class="t-s">"URL_REJECTED"</span>,
+  <span class="t-p">"message"</span>: <span class="t-s">"Only HTTPS URLs are allowed."</span>,
+  <span class="t-p">"retryable"</span>: <span class="t-k">false</span>,
+  <span class="t-p">"traceId"</span>: <span class="t-s">"5acf8b8c-c33b-4855-ac38-25f9c8c602dc"</span>
+}</code></pre></div></div>
+    <div><div class="fr"><p class="frame-tag from-server">import_url { url: "https://localhost/x" } · captured</p><pre class="frame-json from-server" tabindex="0"><code>{
+  <span class="t-p">"code"</span>: <span class="t-s">"URL_REJECTED"</span>,
+  <span class="t-p">"message"</span>: <span class="t-s">"The URL resolves to a private or local network."</span>,
+  <span class="t-p">"retryable"</span>: <span class="t-k">false</span>,
+  <span class="t-p">"traceId"</span>: <span class="t-s">"b4434746-f9f4-452a-b6c0-93bd4e80be4c"</span>
+}</code></pre></div></div>
+  </div>
+
+  <h3>Where the first version leaked</h3>
+  <p>The importer originally decided with a short list of text prefixes: an address was private if it started with <code>127.</code>, <code>10.</code>, <code>169.254.</code> and so on. A list like that has to name every dangerous address, and this one did not. The real functions were called with a stand-in resolver for each address below, before and after the fix:</p>
+  <div class="tbl-wrap"><table><thead><tr><th scope="col">Address</th><th scope="col">Original prefix check</th><th scope="col">Current check</th></tr></thead><tbody><tr><th scope="row" class="lbl"><code>127.0.0.1</code></th><td><span class="chip ok">blocked</span></td><td><span class="chip ok">blocked</span></td></tr><tr><th scope="row" class="lbl"><code>10.1.2.3</code></th><td><span class="chip ok">blocked</span></td><td><span class="chip ok">blocked</span></td></tr><tr><th scope="row" class="lbl"><code>172.16.0.9</code></th><td><span class="chip ok">blocked</span></td><td><span class="chip ok">blocked</span></td></tr><tr><th scope="row" class="lbl"><code>172.32.0.9</code></th><td><span class="chip info">allowed</span></td><td><span class="chip info">allowed</span></td></tr><tr><th scope="row" class="lbl"><code>192.168.1.1</code></th><td><span class="chip ok">blocked</span></td><td><span class="chip ok">blocked</span></td></tr><tr><th scope="row" class="lbl"><code>169.254.169.254</code></th><td><span class="chip ok">blocked</span></td><td><span class="chip ok">blocked</span></td></tr><tr><th scope="row" class="lbl"><code>0.0.0.0</code></th><td><span class="chip ok">blocked</span></td><td><span class="chip ok">blocked</span></td></tr><tr><th scope="row" class="lbl"><code>::1</code></th><td><span class="chip ok">blocked</span></td><td><span class="chip ok">blocked</span></td></tr><tr><th scope="row" class="lbl"><code>::</code></th><td><span class="chip no">allowed: a leak</span></td><td><span class="chip ok">blocked</span></td></tr><tr><th scope="row" class="lbl"><code>fe80::1</code></th><td><span class="chip ok">blocked</span></td><td><span class="chip ok">blocked</span></td></tr><tr><th scope="row" class="lbl"><code>fd00::1</code></th><td><span class="chip ok">blocked</span></td><td><span class="chip ok">blocked</span></td></tr><tr><th scope="row" class="lbl"><code>::ffff:127.0.0.1</code></th><td><span class="chip no">allowed: a leak</span></td><td><span class="chip ok">blocked</span></td></tr><tr><th scope="row" class="lbl"><code>::ffff:7f00:1</code></th><td><span class="chip no">allowed: a leak</span></td><td><span class="chip ok">blocked</span></td></tr><tr><th scope="row" class="lbl"><code>::ffff:169.254.169.254</code></th><td><span class="chip no">allowed: a leak</span></td><td><span class="chip ok">blocked</span></td></tr><tr><th scope="row" class="lbl"><code>100.64.0.1</code></th><td><span class="chip no">allowed: a leak</span></td><td><span class="chip ok">blocked</span></td></tr><tr><th scope="row" class="lbl"><code>93.184.216.34</code></th><td><span class="chip info">allowed</span></td><td><span class="chip info">allowed</span></td></tr><tr><th scope="row" class="lbl"><code>::ffff:93.184.216.34</code></th><td>—</td><td><span class="chip info">allowed</span></td></tr><tr><th scope="row" class="lbl"><code>2606:2800:220:1:248:1893:25c8:1946</code></th><td>—</td><td><span class="chip info">allowed</span></td></tr></tbody></table></div>
+  <div class="callout ok"><span class="tag">Fixed in this repo</span><p><strong>The address check now parses instead of pattern-matching.</strong> The most serious of the five that used to pass were the IPv4-mapped forms. <code>::ffff:127.0.0.1</code> is loopback and <code>::ffff:169.254.169.254</code> is the cloud metadata service, but the original code tested text prefixes and those strings start with <code>::ffff:</code>. Whether an attacker could make a resolver return them depends on their DNS records and your stack, so treat the gap as real without assuming it was trivial. The fix unwraps IPv4-mapped IPv6 first, compares IPv4 numerically (adding <code>100.64.0.0/10</code>, multicast and the unspecified range), and treats IPv6 as an <em>allow-list</em>: only global unicast passes, minus the ranges that embed IPv4. The test <code>the address check refuses internal space, including IPv4-mapped IPv6 and shared space</code> holds nineteen internal and five public addresses.</p></div>
+
+  <div class="panel sim" id="sim-ssrf"><div class="panel-hd"><h3 class="ph">Interactive · Would this URL be fetched?</h3><div class="seg" id="ss-mode" role="group" aria-label="Which check"><button type="button" data-m="repo" aria-pressed="true">The repo’s check</button><button type="button" data-m="old" aria-pressed="false">The original prefix check</button></div></div><div class="panel-bd">
+    <div class="fields">
+      <label class="field">URL<input type="text" id="ss-url" value="https://example.test/report" style="min-width:280px"></label>
+      <label class="field">The name resolves to (comma-separated)<input type="text" id="ss-dns" value="93.184.216.34" style="min-width:280px"></label>
+    </div>
+    <div class="ctl" style="margin-bottom:14px" id="ss-presets">
+      <button class="btn ghost" type="button" data-a="127.0.0.1">127.0.0.1</button><button class="btn ghost" type="button" data-a="169.254.169.254">169.254.169.254</button><button class="btn ghost" type="button" data-a="::ffff:127.0.0.1">::ffff:127.0.0.1</button><button class="btn ghost" type="button" data-a="::ffff:169.254.169.254">::ffff:169.254.169.254</button><button class="btn ghost" type="button" data-a="::">::</button><button class="btn ghost" type="button" data-a="100.64.0.1">100.64.0.1</button><button class="btn ghost" type="button" data-a="93.184.216.34">93.184.216.34</button>
+    </div>
+    <div id="ss-out" role="status"></div>
+    <p class="figcap">The first mode is a port of the current <code>privateAddress()</code> and <code>validate()</code>. The second is the original prefix check, kept for comparison so you can see what it missed. Try the mapped addresses in both.</p></div></div>
+
+  <h3>What no address check can fix</h3>
+  <ul>
+    <li><strong>The name is resolved twice.</strong> <code>validate()</code> looks the hostname up, and then <code>fetch()</code> resolves it again on its own. Between the two, a hostile DNS server can change its answer (<em>DNS rebinding</em>), so the address that was checked is not the address that is connected to. The deployment notes in the repo say as much: check the connected IP, or route through an egress proxy that does.</li>
+    <li><strong>Ports are not restricted.</strong> <code>https://example.test:8443/x</code> validates. That is fine for a public host, and one more reason the network layer matters.</li>
+    <li><strong>Stripping tags does not make content safe.</strong> The tool returns the text with <code>trust: "untrusted_external_content"</code> and never publishes it. That label is for the <em>host</em>. A web page can contain sentences addressed to a model (&ldquo;ignore your instructions and…&rdquo;), and removing HTML does not remove them.</li>
+  </ul>
+  <div class="callout"><span class="tag">Defence in depth</span><p>Treat <code>SafeImporter</code> as one layer. Put the process behind an egress proxy or network policy that <em>cannot</em> reach your private ranges, run it with no metadata credentials, validate the media type, and scan content. Each layer is allowed to have a hole because the next one is not in the same place.</p></div>
+
+</section>
+
+<!-- ============ 07 ============ -->
+<section class="chapter" id="ch07">
+  <div class="eyebrow">Chapter 07 · Beyond the request</div>
+  <h2>Durable tasks</h2>
+  <p class="lede">Stateless MCP means a request carries its own context. It does not mean every piece of work finishes inside one.</p>
+
+  <p>A model waiting for a thirty-second report is a model holding a connection, a slot and a timeout. The alternative is a <strong>job</strong>: accept the work, write it down, return a handle straight away, and let something else do it. The caller polls, or is told, when it is done. Teamspace has the two tools and the table:</p>
+  <div class="cols">
+    <div><div class="fr"><p class="frame-tag from-host">start_release_job · captured</p><pre class="frame-json from-host" tabindex="0"><code>{
+  <span class="t-p">"jobId"</span>: <span class="t-s">"ed857f35-d2cf-4989-8f35-0152f93d5474"</span>,
+  <span class="t-p">"status"</span>: <span class="t-s">"queued"</span>
+}</code></pre></div></div>
+    <div><div class="fr"><p class="frame-tag from-host">get_job · captured</p><pre class="frame-json from-host" tabindex="0"><code>{
+  <span class="t-p">"id"</span>: <span class="t-s">"ed857f35-d2cf-4989-8f35-0152f93d5474"</span>,
+  <span class="t-p">"status"</span>: <span class="t-s">"queued"</span>,
+  <span class="t-p">"result"</span>: <span class="t-k">null</span>,
+  <span class="t-p">"attempts"</span>: <span class="t-n">0</span>,
+  <span class="t-p">"expires_at"</span>: <span class="t-s">"2026-09-21T09:45:20.108Z"</span>
+}</code></pre></div></div>
+  </div>
+  <div class="cap"><b>src/production.ts</b><span>Jobs: create, get, lease, complete</span></div><pre class="code server" tabindex="0"><code><span class="t-k">export</span> <span class="t-k">class</span> Jobs {
+  <span class="t-k">constructor</span>(
+    <span class="t-k">public</span> db: Sql,
+    <span class="t-k">public</span> maxAttempts = <span class="t-n">3</span>,
+    <span class="t-k">public</span> leaseSeconds = <span class="t-n">30</span>,
+  ) {}
+  <span class="t-k">async</span> create(a: Actor, input: unknown) {
+    writeAllowed(a);
+    entitlement(a, <span class="t-s">'Background jobs'</span>);
+    <span class="t-k">const</span> job = id();
+    <span class="t-k">await</span> <span class="t-k">this</span>.db.query(
+      <span class="t-s">`INSERT INTO jobs(id,actor,org,status,input) VALUES($1,$2,$3,'queued',$4)`</span>,
+      [job, a.id, a.org, JSON.stringify(input)],
+    );
+    <span class="t-k">return</span> { jobId: job, status: <span class="t-s">'queued'</span> };
+  }
+  <span class="t-k">async</span> get(a: Actor, jobId: string) {
+    <span class="t-k">const</span> j = (
+      <span class="t-k">await</span> <span class="t-k">this</span>.db.query(
+        <span class="t-s">'SELECT id,status,result,attempts,expires_at FROM jobs WHERE id=$1 AND org=$2 AND actor=$3'</span>,
+        [jobId, a.org, a.id],
+      )
+    ).rows[<span class="t-n">0</span>];
+    <span class="t-k">if</span> (!j) <span class="t-k">throw</span> <span class="t-k">new</span> Fault(<span class="t-s">'NOT_FOUND'</span>, <span class="t-s">'Job not found for this actor.'</span>, <span class="t-n">404</span>);
+    <span class="t-k">return</span> j;
+  }
+  <span class="t-c">// Take the next job, or one whose lease lapsed. A job that has used every attempt is dead-lettered, not run again.</span>
+  <span class="t-k">async</span> lease(worker: string, seconds = <span class="t-k">this</span>.leaseSeconds) {
+    <span class="t-k">await</span> <span class="t-k">this</span>.db.query(
+      <span class="t-s">`UPDATE jobs SET status='failed',result=$2,lease_until=null,lease_owner=null WHERE status='working' AND lease_until&lt;now() AND attempts&gt;=$1`</span>,
+      [<span class="t-k">this</span>.maxAttempts, JSON.stringify({ error: <span class="t-s">'attempts exhausted'</span> })],
+    );
+    <span class="t-k">return</span> (
+      <span class="t-k">await</span> <span class="t-k">this</span>.db.query(
+        <span class="t-s">`UPDATE jobs SET status='working',lease_until=now()+make_interval(secs=&gt;$1::float8),lease_owner=$2,attempts=attempts+1 WHERE id=(SELECT id FROM jobs WHERE (status='queued' OR (status='working' AND lease_until&lt;now())) AND attempts&lt;$3 AND expires_at&gt;now() ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING *`</span>,
+        [seconds, worker, <span class="t-k">this</span>.maxAttempts],
+      )
+    ).rows[<span class="t-n">0</span>];
+  }
+  <span class="t-c">// Only the worker that holds an unexpired lease may finish the job, so a slow worker cannot overwrite the one that took over.</span>
+  <span class="t-k">async</span> complete(jobId: string, result: unknown, worker: string) {
+    <span class="t-k">return</span> (
+      (
+        <span class="t-k">await</span> <span class="t-k">this</span>.db.query(
+          <span class="t-s">`UPDATE jobs SET status='completed',result=$2,lease_until=null,lease_owner=null WHERE id=$1 AND status='working' AND lease_owner=$3 AND lease_until&gt;now() RETURNING id`</span>,
+          [jobId, JSON.stringify(result), worker],
+        )
+      ).rows.length &gt; <span class="t-n">0</span>
+    );
+  }
+  <span class="t-c">// A failed attempt goes back to the queue, until the attempts run out.</span>
+  <span class="t-k">async</span> fail(jobId: string, message: string, worker: string) {
+    <span class="t-k">return</span> (
+      <span class="t-k">await</span> <span class="t-k">this</span>.db.query(
+        <span class="t-s">`UPDATE jobs SET status=CASE WHEN attempts&gt;=$4 THEN 'failed' ELSE 'queued' END,result=CASE WHEN attempts&gt;=$4 THEN $2::jsonb ELSE result END,lease_until=null,lease_owner=null WHERE id=$1 AND status='working' AND lease_owner=$3 RETURNING status`</span>,
+        [jobId, JSON.stringify({ error: message }), worker, <span class="t-k">this</span>.maxAttempts],
+      )
+    ).rows[<span class="t-n">0</span>]?.status <span class="t-k">as</span> string | <span class="t-k">undefined</span>;
+  }
+}</code></pre>
+  <p>Five ideas, in the order the code has them. <strong>Creation</strong> is gated by role and plan: a writer on the Pro plan. <strong>Reading</strong> is scoped to the organisation and the creating actor (captured: a colleague gets <code>NOT_FOUND</code>, <em>Job not found for this actor</em>). <strong>Leasing</strong> uses <code>FOR UPDATE SKIP LOCKED</code> so workers skip past claimed rows, records <em>who</em> holds the lease, and will not lease a job that has used all its attempts. <strong>Completion</strong> succeeds only for the worker that holds an unexpired lease. <strong>Failure</strong> puts the job back in the queue until its attempts run out, then dead-letters it with the reason.</p>
+  <div class="panel sim" id="sim-jobs"><div class="panel-hd"><h3 class="ph">Interactive · Two workers, a lease and an attempt limit</h3><div class="ctl"><button class="btn ghost" type="button" id="jb-reset">Reset</button></div></div><div class="panel-bd">
+    <div class="ctl" style="margin-bottom:14px">
+      <button class="btn" type="button" id="jb-add">Enqueue a job</button>
+      <button class="btn" type="button" data-w="W1">Worker 1 leases</button>
+      <button class="btn" type="button" data-w="W2">Worker 2 leases</button>
+      <button class="btn ghost" type="button" id="jb-c1">Worker 1 completes</button>
+      <button class="btn ghost" type="button" id="jb-c2">Worker 2 completes</button>
+      <button class="btn ghost" type="button" id="jb-f1">Worker 1’s attempt fails</button>
+      <button class="btn ghost" type="button" id="jb-t">Advance 31 s</button>
+    </div>
+    <p id="jb-verdict" role="status"></p>
+    <table class="mini"><caption>jobs (clock <span id="jb-clock">0</span> s, lease 30 s, 3 attempts)</caption><thead><tr><th scope="col">id</th><th scope="col">status</th><th scope="col">attempts</th><th scope="col">lease held by</th><th scope="col">lease ends</th></tr></thead><tbody id="jb-rows"></tbody></table>
+    <p class="figcap">A port of <code>lease()</code>, <code>complete()</code> and <code>fail()</code>. Try: lease with Worker 1, let the lease lapse (advance 31 s, as if it crashed), lease with Worker 2, then have Worker 1 complete. It is refused. Then keep letting leases lapse until the attempts run out and the job is dead-lettered.</p></div></div>
+  <p>A crashed worker is the point of the lease: nobody has to notice the crash, the job simply becomes available again once the lease runs out. The price is at-least-once delivery, so the work has to be safe to repeat. Two guards keep that from getting out of hand. Completion checks the lease owner, so a slow first worker that finishes after a second one took over cannot overwrite it. And attempts have a ceiling (three by default): a job that keeps failing, or keeps killing its worker, is dead-lettered as <code>failed</code> with its reason instead of being re-leased for ever.</p>
+  <div class="callout ok"><span class="tag">Fixed in this repo</span><p><strong>Something now processes the jobs, and attempts have a ceiling.</strong> <code>lease()</code> and <code>complete()</code> used to be called from one test and nowhere in <code>src/</code>, so a queued job stayed <code>queued</code> for ever, and a job that kept crashing was re-leased without limit. <code>src/worker.ts</code> is the missing consumer. <code>main.ts</code> starts it in the process (set <code>WORKER=off</code> to switch that off), and <code>npm run worker</code> runs it on its own against a shared PostgreSQL.</p></div>
+  <div class="cap"><b>src/worker.ts</b><span>one turn of the worker loop, and the job it runs</span></div><pre class="code server" tabindex="0"><code><span class="t-k">export</span> <span class="t-k">async</span> <span class="t-k">function</span> releaseReport(db: Sql, job: Job) {
+  <span class="t-k">const</span> a = <span class="t-k">await</span> actor(db, job.actor);
+  <span class="t-k">const</span> found = <span class="t-k">await</span> <span class="t-k">new</span> Product(db).searchTasks(a, {
+    query: String(job.input?.query ?? <span class="t-s">''</span>),
+    status: <span class="t-s">'done'</span>,
+    limit: <span class="t-n">50</span>,
+  });
+  <span class="t-k">return</span> {
+    generatedFor: a.id,
+    total: found.total,
+    tasks: found.items.map((t: any) =&gt; ({ id: t.id, title: t.title })),
+  };
+}
+
+<span class="t-k">export</span> <span class="t-k">async</span> <span class="t-k">function</span> processOne(
+  db: Sql,
+  jobs: Jobs,
+  workerId: string,
+  handler = releaseReport,
+) {
+  <span class="t-k">const</span> job: any = <span class="t-k">await</span> jobs.lease(workerId);
+  <span class="t-k">if</span> (!job) <span class="t-k">return</span> <span class="t-s">'idle'</span> <span class="t-k">as</span> <span class="t-k">const</span>;
+  <span class="t-k">try</span> {
+    <span class="t-k">const</span> result = <span class="t-k">await</span> handler(db, job);
+    <span class="t-k">return</span> (<span class="t-k">await</span> jobs.complete(job.id, result, workerId)) ?
+        (<span class="t-s">'completed'</span> <span class="t-k">as</span> <span class="t-k">const</span>)
+      : (<span class="t-s">'lease-lost'</span> <span class="t-k">as</span> <span class="t-k">const</span>);
+  } <span class="t-k">catch</span> (e: any) {
+    <span class="t-k">await</span> jobs.fail(job.id, String(e?.message ?? e), workerId);
+    <span class="t-k">return</span> <span class="t-s">'failed'</span> <span class="t-k">as</span> <span class="t-k">const</span>;
+  }
+}</code></pre>
+  <div class="fr"><p class="frame-tag from-host">get_job a few seconds after start_release_job · captured</p><pre class="frame-json from-host" tabindex="0"><code>{
+  <span class="t-p">"id"</span>: <span class="t-s">"8a90c085-2ba8-4803-8bc7-41e1d0ef3ce2"</span>,
+  <span class="t-p">"status"</span>: <span class="t-s">"completed"</span>,
+  <span class="t-p">"result"</span>: {
+    <span class="t-p">"tasks"</span>: [
+      {
+        <span class="t-p">"id"</span>: <span class="t-s">"task-1"</span>,
+        <span class="t-p">"title"</span>: <span class="t-s">"Ship the search endpoint"</span>
+      }
+    ],
+    <span class="t-p">"total"</span>: <span class="t-n">1</span>,
+    <span class="t-p">"generatedFor"</span>: <span class="t-s">"alice"</span>
+  },
+  <span class="t-p">"attempts"</span>: <span class="t-n">1</span>,
+  <span class="t-p">"expires_at"</span>: <span class="t-s">"2026-09-21T11:43:11.145Z"</span>
+}</code></pre></div>
+  <p>That is a real job: started through the MCP tool, leased by the worker, run against the product scoped to Alice’s team, and completed. The release report is the completed tasks whose titles match the query, so the same job started as Sam would see only Sam’s team.</p>
+  <div class="callout ok"><span class="tag">Fixed in this repo</span><p><strong>A viewer can no longer queue jobs.</strong> <code>Jobs.create()</code> used to check the plan (<code>entitlement()</code>) but not the role (<code>writeAllowed()</code>), so a read-only member on the Pro plan could write to the queue, against the product contract that viewers only read. It now asks both questions. Captured from the running server:</p></div>
+  <div class="run"><div class="run-hd"><span>Captured run</span><span>captured 2026-09-20</span></div><pre tabindex="0"><code><span class="t-k">$ </span>tools/call start_release_job as viewer   (role: viewer, plan: pro)
+{
+  "code": "FORBIDDEN",
+  "message": "Your role can read but cannot change this team’s work.",
+  "retryable": false,
+  "traceId": "cc49deff-b46c-4ef3-8195-e041291e62fc"
+}</code></pre></div>
+  <p>This is Chapter 01’s lesson in miniature: role and plan are separate questions, and a new write path has to ask both. The test <code>a viewer cannot queue a job, and a member on the free plan gets PLAN_REQUIRED</code> pins it.</p>
+  <p>The protocol has a standard shape for this. The SDK’s type definitions include <code>tasks/get</code>, <code>tasks/result</code>, <code>tasks/cancel</code> and <code>tasks/list</code> methods, which standardise how a client polls a long-running call. This repository does not use them; it implements the pattern with its own tools and table. That is a legitimate first step, and adopting the protocol’s methods later means clients can poll without knowing your tool names. The database still owns durability either way.</p>
+
+</section>
+
+<!-- ============ 08 ============ -->
+<section class="chapter" id="ch08">
+  <div class="eyebrow">Chapter 08 · Beyond the request</div>
+  <h2>Composition</h2>
+  <p class="lede">When one server calls another, four things must travel with the request or you lose control of it: who, how long, how much, and where it has been.</p>
+
+  <p>Sometimes one MCP server has to call another, for example a workflow server that reaches a knowledge server. Each hop is a new request, and each new request is a chance to forget something. The four things that must not be forgotten are the <strong>subject</strong> (whose authority this is), the <strong>deadline</strong> (when the original caller stops waiting), the <strong>budget</strong> (what is left to spend), and the <strong>route so far</strong> (so a cycle is noticed).</p>
+  <div class="cap"><b>src/production.ts</b><span>nextHop(): checked before every hop</span></div><pre class="code server" tabindex="0"><code><span class="t-k">export</span> <span class="t-k">function</span> nextHop(h: Hop, server: string, cost: number): Hop {
+  <span class="t-k">if</span> (h.deadline &lt;= Date.now())
+    <span class="t-k">throw</span> <span class="t-k">new</span> Fault(<span class="t-s">'DEADLINE'</span>, <span class="t-s">'Composite deadline expired.'</span>, <span class="t-n">504</span>);
+  <span class="t-k">if</span> (h.budget &lt; cost)
+    <span class="t-k">throw</span> <span class="t-k">new</span> Fault(<span class="t-s">'BUDGET_EXCEEDED'</span>, <span class="t-s">'Composite cost budget exhausted.'</span>, <span class="t-n">429</span>);
+  <span class="t-k">if</span> (h.visited.includes(server))
+    <span class="t-k">throw</span> <span class="t-k">new</span> Fault(<span class="t-s">'RECURSION'</span>, <span class="t-s">'Composite server cycle detected.'</span>, <span class="t-n">508</span>);
+  <span class="t-k">if</span> (h.visited.length &gt;= <span class="t-n">5</span>)
+    <span class="t-k">throw</span> <span class="t-k">new</span> Fault(<span class="t-s">'HOP_LIMIT'</span>, <span class="t-s">'Composite call depth exceeded.'</span>, <span class="t-n">508</span>);
+  <span class="t-k">return</span> { ...h, budget: h.budget - cost, visited: [...h.visited, server] };
+}</code></pre>
+  <p>Four checks, in order. Has the shared deadline passed? Can the remaining budget cover this hop? Have we already visited this server? Is the chain already five servers long? Each returns a distinct code. Because the deadline and the budget are <em>carried</em> rather than reset, a chain cannot quietly take ten times as long or cost ten times as much as the caller agreed to.</p>
+  <div class="panel sim" id="sim-hops"><div class="panel-hd"><h3 class="ph">Interactive · Extend a call chain</h3><div class="ctl"><button class="btn ghost" type="button" id="hp-reset">Reset</button></div></div><div class="panel-bd">
+    <div class="fields">
+      <label class="field">Call next<select id="hp-server"><option>knowledge</option><option>tasks</option><option>gateway</option><option>teamspace</option><option>billing</option><option>search</option></select></label>
+      <label class="field">Cost of the hop<input type="number" id="hp-cost" value="3" min="1" max="10"></label>
+    </div>
+    <div class="ctl" style="margin-bottom:14px"><button class="btn" type="button" id="hp-go">Make the hop</button><button class="btn ghost" type="button" id="hp-time">Use 2 s of the deadline</button></div>
+    <div class="readout" id="hp-read"></div>
+    <p id="hp-verdict" role="status"></p>
+    <p class="figcap">Starts as the lab does: budget 10, visited <code>teamspace</code>, a 5-second deadline. Try calling <code>teamspace</code> again (a cycle), spending past the budget, and using three deadline chunks.</p></div></div>
+  <div class="run"><div class="run-hd"><span>Captured run</span><span>captured 2026-09-20</span></div><pre tabindex="0"><code><span class="t-k">$ </span>nextHop() along a chain, budget 10
+b: ok budget=7 visited=a&gt;b
+c: ok budget=4 visited=a&gt;b&gt;c
+a: RECURSION
+d: BUDGET_EXCEEDED  (cost 5, budget 4)
+e: ok budget=3 visited=a&gt;b&gt;c&gt;e
+f: ok budget=2 visited=a&gt;b&gt;c&gt;e&gt;f
+g: HOP_LIMIT</code></pre></div>
+  <p>Note two details in that run. A refused hop (<code>a</code>, <code>d</code>) does not consume budget or extend the route: the check happens before the new state is built. And the depth limit counts servers, including the origin, so with five allowed the chain stops after four hops.</p>
+  <div class="callout ok"><span class="tag">Fixed in this repo</span><p><strong><code>nextHop()</code> now has a caller.</strong> It used to be exported, tested and run in a lab, but no tool used it. <code>draft_release_note</code> is a composite tool that reads the completed tasks and then the checklist page as two internal hops, sharing one deadline, one budget and one route. It returns a draft and stops there: publishing still needs an approval, which stays in the host.</p></div>
+  <div class="cap"><b>src/mcp.ts</b><span>draft_release_note: two hops, one deadline, one budget</span></div><pre class="code server" tabindex="0"><code>server.registerTool(
+  <span class="t-s">'draft_release_note'</span>,
+  {
+    description:
+      <span class="t-s">'Draft release notes from completed tasks in one bounded call. Returns a draft only: nothing is published, and publishing still needs approval.'</span>,
+    inputSchema: z.object({ query: z.string().max(<span class="t-n">200</span>).<span class="t-k">default</span>(<span class="t-s">''</span>) }).strict(),
+    annotations: { readOnlyHint: <span class="t-k">true</span> },
+  },
+  ({ query }) =&gt;
+    guarded(<span class="t-s">'draft_release_note'</span>, <span class="t-n">3</span>, <span class="t-k">async</span> (a, traceId) =&gt; {
+      <span class="t-c">// Each internal hop must fit the same deadline and budget, and may not revisit a server.</span>
+      <span class="t-k">let</span> hop: Hop = {
+        traceId,
+        deadline: Date.now() + <span class="t-n">5000</span>,
+        budget: <span class="t-n">10</span>,
+        visited: [<span class="t-s">'teamspace'</span>],
+      };
+      hop = nextHop(hop, <span class="t-s">'tasks-api'</span>, <span class="t-n">3</span>);
+      <span class="t-k">const</span> tasks = <span class="t-k">await</span> downstream.call(
+        a.id,
+        <span class="t-s">'search_tasks'</span>,
+        { query, status: <span class="t-s">'done'</span>, limit: <span class="t-n">20</span> },
+        hop.deadline,
+      );
+      hop = nextHop(hop, <span class="t-s">'knowledge-api'</span>, <span class="t-n">3</span>);
+      <span class="t-k">const</span> templates = <span class="t-k">await</span> downstream.call(
+        a.id,
+        <span class="t-s">'search_pages'</span>,
+        { query: <span class="t-s">''</span>, limit: <span class="t-n">1</span> },
+        hop.deadline,
+      );
+      <span class="t-k">const</span> draft = {
+        title: <span class="t-s">'Release notes'</span>,
+        body: <span class="t-s">`# Completed work\n\n${tasks.items.map((t: any) =&gt; `</span>- ${t.title} (${t.id})<span class="t-s">`).join('\n')}`</span>,
+        taskIds: tasks.items.map((t: any) =&gt; t.id),
+      };
+      <span class="t-k">return</span> {
+        draft,
+        template: templates.items[<span class="t-n">0</span>]?.id ?? <span class="t-k">null</span>,
+        route: hop.visited,
+        budgetLeft: hop.budget,
+        deadlineMsLeft: Math.max(<span class="t-n">0</span>, hop.deadline - Date.now()),
+      };
+    }),
+);</code></pre>
+  <div class="fr"><p class="frame-tag from-server">draft_release_note as alice · structuredContent · captured</p><pre class="frame-json from-server" tabindex="0"><code>{
+  <span class="t-p">"draft"</span>: {
+    <span class="t-p">"title"</span>: <span class="t-s">"Release notes"</span>,
+    <span class="t-p">"body"</span>: <span class="t-s">"# Completed work\n\n- Ship the search endpoint (task-1)"</span>,
+    <span class="t-p">"taskIds"</span>: [
+      <span class="t-s">"task-1"</span>
+    ]
+  },
+  <span class="t-p">"template"</span>: <span class="t-s">"page-1"</span>,
+  <span class="t-p">"route"</span>: [
+    <span class="t-s">"teamspace"</span>,
+    <span class="t-s">"tasks-api"</span>,
+    <span class="t-s">"knowledge-api"</span>
+  ],
+  <span class="t-p">"budgetLeft"</span>: <span class="t-n">4</span>,
+  <span class="t-p">"deadlineMsLeft"</span>: <span class="t-n">4988</span>
+}</code></pre></div>
+  <p>Read the tail of that answer. The route is <code>teamspace, tasks-api, knowledge-api</code>, the budget went from 10 to 4 (three for each hop), and the deadline shows how much of the five seconds is left. Each hop went through the same <code>guarded()</code> pipeline, and the whole call is one audit row.</p>
+  <div class="callout"><span class="tag">Avoid the opaque chain</span><p>The alternative to a carried context is an agent inside an agent: one tool that quietly calls a model, which calls another tool, which calls another server. Cost, latency, policy decisions and the source of a failure all disappear inside it. If a chain has to exist, make every hop pass its budget and deadline down, and make the caller able to see the whole route in the response.</p></div>
+
+</section>
+
+<!-- ============ 09 ============ -->
+<section class="chapter" id="ch09">
+  <div class="eyebrow">Chapter 09 · Operate</div>
+  <h2>Observability</h2>
+  <p class="lede">When something goes wrong at 3 a.m., the record has to say who, which tenant, what, how it ended, and how to find the rest, without containing anything you would regret leaking.</p>
+
+  <p>An audit record is small on purpose. It answers five questions: <strong>who</strong> (actor), <strong>which tenant</strong> (org), <strong>what</strong> (operation), <strong>how it ended</strong> (outcome) and <strong>which request</strong> (trace id), plus a timestamp. Read what it leaves out:</p>
+  <div class="cap"><b>src/policy.ts</b><span>audit(): a comment that is a policy</span></div><pre class="code prod" tabindex="0"><code><span class="t-k">export</span> <span class="t-k">async</span> <span class="t-k">function</span> audit(
+  db: Sql,
+  a: Actor,
+  operation: string,
+  outcome: string,
+  traceId: string,
+) {
+  <span class="t-c">// Deliberately excludes arguments, page bodies, tokens and scraped content.</span>
+  <span class="t-k">await</span> db.query(
+    <span class="t-s">'INSERT INTO audit(id,actor,org,operation,outcome,trace_id) VALUES($1,$2,$3,$4,$5,$6)'</span>,
+    [id(), a.id, a.org, operation, outcome, traceId],
+  );
+}</code></pre>
+  <p>No arguments, no page bodies, no tokens, no scraped content. That is deliberate. Logs are copied to more places than databases are, kept longer, and read by more people, so anything in them is effectively public inside your company. If an argument was sensitive it should never have been written, and the ones that are not sensitive can be recovered from the trace id.</p>
+  <p>The trace id is the thread that ties things together. It is generated per call in <code>execute()</code>, returned in the error the caller sees, and written to the audit row, so a user’s screenshot of an error leads straight to the record of it. Here is the real operations endpoint after a few job calls (one of them refused), from the live server:</p>
+  <div class="fr"><p class="frame-tag from-server">GET /api/ops as alice · captured (the newest audit rows, including the job calls)</p><pre class="frame-json from-server" tabindex="0"><code>{
+  <span class="t-p">"usage"</span>: {
+    <span class="t-p">"spent"</span>: <span class="t-n">0</span>,
+    <span class="t-p">"reserved"</span>: <span class="t-n">0</span>,
+    <span class="t-p">"allowance"</span>: <span class="t-n">1000</span>
+  },
+  <span class="t-p">"audit"</span>: [
+    {
+      <span class="t-p">"operation"</span>: <span class="t-s">"get_job"</span>,
+      <span class="t-p">"outcome"</span>: <span class="t-s">"success"</span>,
+      <span class="t-p">"trace_id"</span>: <span class="t-s">"301b860d-c422-4827-80ef-e68a46fd452c"</span>,
+      <span class="t-p">"created_at"</span>: <span class="t-s">"2026-09-20T10:55:15.978Z"</span>
+    },
+    {
+      <span class="t-p">"operation"</span>: <span class="t-s">"start_release_job"</span>,
+      <span class="t-p">"outcome"</span>: <span class="t-s">"success"</span>,
+      <span class="t-p">"trace_id"</span>: <span class="t-s">"cf8f196e-0cd4-4cfa-8ec1-2ec7081db256"</span>,
+      <span class="t-p">"created_at"</span>: <span class="t-s">"2026-09-20T10:55:15.965Z"</span>
+    },
+    {
+      <span class="t-p">"operation"</span>: <span class="t-s">"start_release_job"</span>,
+      <span class="t-p">"outcome"</span>: <span class="t-s">"failure"</span>,
+      <span class="t-p">"trace_id"</span>: <span class="t-s">"cc49deff-b46c-4ef3-8195-e041291e62fc"</span>,
+      <span class="t-p">"created_at"</span>: <span class="t-s">"2026-09-20T10:55:15.950Z"</span>
+    }
+  ]
+}</code></pre></div>
+
+  <h3>What a metric label costs</h3>
+  <p>Metrics are different from logs. A metric is stored as one time series per unique combination of its label values. Add a label and the number of series is multiplied by how many values it can take. Labels with a small fixed set of values are cheap. Labels with a value per user or per record are an outage waiting to be billed.</p>
+  <div class="panel sim" id="sim-labels"><div class="panel-hd"><h3 class="ph">Interactive · How many series is that?</h3></div><div class="panel-bd">
+    <div class="fields">
+      <label class="field">Organisations<input type="number" id="lb-orgs" value="200" min="1" max="100000"></label>
+      <label class="field">Active users<input type="number" id="lb-users" value="5000" min="1" max="10000000"></label>
+    </div>
+    <fieldset style="border:0;padding:0;margin:0"><legend class="figcap">Labels on <code>tool_calls_total</code></legend>
+      <label class="field" style="flex-direction:row;gap:8px;margin:4px 0"><input type="checkbox" class="lb-ck" data-v="10" id="lb-op" checked> <span><code>operation</code> <span class="figcap">10 tools</span></span></label><label class="field" style="flex-direction:row;gap:8px;margin:4px 0"><input type="checkbox" class="lb-ck" data-v="2" id="lb-out" checked> <span><code>outcome</code> <span class="figcap">success / failure</span></span></label><label class="field" style="flex-direction:row;gap:8px;margin:4px 0"><input type="checkbox" class="lb-ck" data-v="orgs" id="lb-org"> <span><code>org</code> <span class="figcap">one per organisation</span></span></label><label class="field" style="flex-direction:row;gap:8px;margin:4px 0"><input type="checkbox" class="lb-ck" data-v="users" id="lb-usr"> <span><code>actor</code> <span class="figcap">one per user</span></span></label><label class="field" style="flex-direction:row;gap:8px;margin:4px 0"><input type="checkbox" class="lb-ck" data-v="1000000" id="lb-task"> <span><code>task id</code> <span class="figcap">one per task, unbounded</span></span></label><label class="field" style="flex-direction:row;gap:8px;margin:4px 0"><input type="checkbox" class="lb-ck" data-v="10000000" id="lb-text"> <span><code>search text</code> <span class="figcap">user-typed, unbounded</span></span></label>
+    </fieldset>
+    <div class="readout"><div><small>Time series</small><strong id="lb-n">—</strong></div><div><small>Verdict</small><strong id="lb-v" style="font-size:16px">—</strong></div></div>
+    <p class="figcap">Series = the product of every selected label’s distinct values. Task id and search text are assumed at one million and ten million distinct values. Per-tenant and per-user detail belongs in logs and traces, where one row per event is normal.</p></div></div>
+  <div class="callout ok"><span class="tag">Fixed in this repo</span><p><strong>Every tool leaves an audit row.</strong> Audit used to be written in <code>execute()</code> and in <code>import_url</code> only, so <code>start_release_job</code> and <code>get_job</code> wrote nothing, and neither did <code>explain_route</code> in MCP 104. For a system whose job is to say who did what, the jobs path is the one that spends real money in the background. All of them now go through <code>guarded()</code> (Chapter 00), so a new tool cannot forget. One gap remains by design: a call the SDK rejects at the schema stage never reaches the handler, so it leaves no row (102 Chapter 02).</p></div>
+  <p>Two small details in the endpoint itself. The audit query is scoped by <code>org</code> only, so any authenticated user sees their whole organisation’s recent rows (twelve, newest first). That is reasonable for an operations panel and worth restricting to admins in a real product. And rate-limited calls are audited as <code>throttled</code>, not <code>failure</code>, so an alert on the failure rate does not page during a legitimate burst of throttling.</p>
+
+</section>
+
+<!-- ============ 10 ============ -->
+<section class="chapter" id="ch10">
+  <div class="eyebrow">Chapter 10 · Operate</div>
+  <h2>Deployment</h2>
+  <p class="lede">The teaching setup runs on one laptop with an embedded database. Here is what the repo gives you for the move, and an honest list of what it does not.</p>
+
+  <p>The default path uses PGlite, so <code>npm run dev</code> works with nothing installed. Three files support a real deployment: a Compose file that runs the app against a genuine PostgreSQL 16, a CloudFormation template for an AWS container service, and a README that lists the surrounding pieces. Read them as a sketch, not a runbook.</p>
+  <div class="panel" data-w="tabs"><div class="panel-hd"><h3 class="ph">Interactive · The deployment files</h3></div><div class="panel-bd"><section data-tab="docker-compose.yml"><div class="cap"><b>docker-compose.yml</b><span>PostgreSQL 16 plus the app in dev mode</span></div><pre class="code server" tabindex="0"><code><span class="t-p">services</span>:
+  <span class="t-p">postgres</span>:
+    <span class="t-p">image</span>: <span class="t-p">postgres</span>:<span class="t-n">16</span>-alpine
+    <span class="t-p">environment</span>:
+      <span class="t-p">POSTGRES_USER</span>: teamspace
+      <span class="t-p">POSTGRES_PASSWORD</span>: teamspace
+      <span class="t-p">POSTGRES_DB</span>: teamspace
+    <span class="t-p">ports</span>: [<span class="t-s">"5432:5432"</span>]
+    <span class="t-p">healthcheck</span>:
+      <span class="t-p">test</span>: [<span class="t-s">"CMD-SHELL"</span>, <span class="t-s">"pg_isready -U teamspace"</span>]
+      <span class="t-p">interval</span>: 3s
+      <span class="t-p">timeout</span>: 2s
+      <span class="t-p">retries</span>: <span class="t-n">20</span>
+  <span class="t-p">app</span>:
+    <span class="t-p">image</span>: <span class="t-p">node</span>:<span class="t-n">22</span>-alpine
+    <span class="t-p">working_dir</span>: /app
+    <span class="t-p">volumes</span>: [<span class="t-s">".:/app"</span>]
+    <span class="t-p">command</span>: [<span class="t-s">"sh"</span>, <span class="t-s">"-c"</span>, <span class="t-s">"npm ci &amp;&amp; npm run dev"</span>]
+    <span class="t-p">environment</span>:
+      <span class="t-p">DATABASE_URL</span>: <span class="t-p">postgres</span>://<span class="t-p">teamspace</span>:teamspace@<span class="t-p">postgres</span>:<span class="t-n">5432</span>/teamspace
+      <span class="t-p">HOST</span>: <span class="t-n">0</span>.<span class="t-n">0</span>.<span class="t-n">0</span>.<span class="t-n">0</span>
+      <span class="t-p">PUBLIC_ORIGIN</span>: <span class="t-p">http</span>://<span class="t-p">localhost</span>:<span class="t-n">3102</span>
+      <span class="t-p">TOKEN_SECRET</span>: local-course-secret-change-me-<span class="t-n">000000000</span>
+    <span class="t-p">ports</span>: [<span class="t-s">"3102:3102"</span>]
+    <span class="t-p">depends_on</span>:
+      <span class="t-p">postgres</span>: { <span class="t-p">condition</span>: service_healthy }</code></pre><p class="figcap">The app service mounts the source and runs <code>npm ci && npm run dev</code>. That is a development container, not a production image. The database waits on a real <code>pg_isready</code> health check.</p></section><section data-tab="infra/aws/template.yaml"><div class="cap"><b>infra/aws/template.yaml</b><span>an App Runner service and its two roles</span></div><pre class="code server" tabindex="0"><code><span class="t-p">AWSTemplateFormatVersion</span>: <span class="t-s">'2010-09-09'</span>
+<span class="t-p">Description</span>: Optional Teamspace App Runner teaching deployment (written to the <span class="t-p">AWS</span>::<span class="t-p">AppRunner</span>::Service schema; not linted or deployed by the course)
+<span class="t-p">Parameters</span>:
+  <span class="t-p">ImageUri</span>: { <span class="t-p">Type</span>: String, <span class="t-p">Description</span>: <span class="t-s">"ECR image built from the Dockerfile in this repository"</span> }
+  <span class="t-p">DatabaseSecretArn</span>: { <span class="t-p">Type</span>: String, <span class="t-p">Description</span>: <span class="t-s">"Secrets Manager secret whose value is a postgres:// connection string"</span> }
+  <span class="t-p">TokenSecretArn</span>: { <span class="t-p">Type</span>: String, <span class="t-p">Description</span>: <span class="t-s">"Secrets Manager secret holding the token verification secret (at least 32 characters)"</span> }
+  <span class="t-p">PublicOrigin</span>: { <span class="t-p">Type</span>: String, <span class="t-p">Description</span>: <span class="t-s">"The https origin clients use, for example https://mcp.example.com"</span> }
+<span class="t-p">Resources</span>:
+  <span class="t-c"># Lets App Runner pull the image. It does not read application secrets.</span>
+  <span class="t-p">AccessRole</span>:
+    <span class="t-p">Type</span>: <span class="t-p">AWS</span>::<span class="t-p">IAM</span>::Role
+    <span class="t-p">Properties</span>:
+      <span class="t-p">AssumeRolePolicyDocument</span>:
+        <span class="t-p">Version</span>: <span class="t-s">'2012-10-17'</span>
+        <span class="t-p">Statement</span>: [{ <span class="t-p">Effect</span>: Allow, <span class="t-p">Principal</span>: { <span class="t-p">Service</span>: build.apprunner.amazonaws.com }, <span class="t-p">Action</span>: <span class="t-s">'sts:AssumeRole'</span> }]
+      <span class="t-p">Policies</span>:
+        - <span class="t-p">PolicyName</span>: pull-image
+          <span class="t-p">PolicyDocument</span>:
+            <span class="t-p">Version</span>: <span class="t-s">'2012-10-17'</span>
+            <span class="t-p">Statement</span>:
+              - { <span class="t-p">Effect</span>: Allow, <span class="t-p">Action</span>: [<span class="t-s">'ecr:GetAuthorizationToken'</span>], <span class="t-p">Resource</span>: <span class="t-s">'*'</span> }
+              - { <span class="t-p">Effect</span>: Allow, <span class="t-p">Action</span>: [<span class="t-s">'ecr:BatchGetImage'</span>,<span class="t-s">'ecr:GetDownloadUrlForLayer'</span>,<span class="t-s">'ecr:BatchCheckLayerAvailability'</span>], <span class="t-p">Resource</span>: <span class="t-s">'*'</span> }
+  <span class="t-c"># The running service reads its secrets with this role.</span>
+  <span class="t-p">InstanceRole</span>:
+    <span class="t-p">Type</span>: <span class="t-p">AWS</span>::<span class="t-p">IAM</span>::Role
+    <span class="t-p">Properties</span>:
+      <span class="t-p">AssumeRolePolicyDocument</span>:
+        <span class="t-p">Version</span>: <span class="t-s">'2012-10-17'</span>
+        <span class="t-p">Statement</span>: [{ <span class="t-p">Effect</span>: Allow, <span class="t-p">Principal</span>: { <span class="t-p">Service</span>: tasks.apprunner.amazonaws.com }, <span class="t-p">Action</span>: <span class="t-s">'sts:AssumeRole'</span> }]
+      <span class="t-p">Policies</span>:
+        - <span class="t-p">PolicyName</span>: read-secrets
+          <span class="t-p">PolicyDocument</span>:
+            <span class="t-p">Version</span>: <span class="t-s">'2012-10-17'</span>
+            <span class="t-p">Statement</span>:
+              - { <span class="t-p">Effect</span>: Allow, <span class="t-p">Action</span>: [<span class="t-s">'secretsmanager:GetSecretValue'</span>], <span class="t-p">Resource</span>: [{ <span class="t-p">Ref</span>: DatabaseSecretArn }, { <span class="t-p">Ref</span>: TokenSecretArn }] }
+  <span class="t-p">Service</span>:
+    <span class="t-p">Type</span>: <span class="t-p">AWS</span>::<span class="t-p">AppRunner</span>::Service
+    <span class="t-p">Properties</span>:
+      <span class="t-p">SourceConfiguration</span>:
+        <span class="t-p">AuthenticationConfiguration</span>: { <span class="t-p">AccessRoleArn</span>: { <span class="t-s">'Fn::GetAtt'</span>: [AccessRole, Arn] } }
+        <span class="t-p">AutoDeploymentsEnabled</span>: false
+        <span class="t-p">ImageRepository</span>:
+          <span class="t-p">ImageIdentifier</span>: { <span class="t-p">Ref</span>: ImageUri }
+          <span class="t-p">ImageRepositoryType</span>: ECR
+          <span class="t-p">ImageConfiguration</span>:
+            <span class="t-p">Port</span>: <span class="t-s">'3102'</span>
+            <span class="t-p">RuntimeEnvironmentVariables</span>:
+              - { <span class="t-p">Name</span>: HOST, <span class="t-p">Value</span>: <span class="t-s">'0.0.0.0'</span> }
+              - { <span class="t-p">Name</span>: NODE_ENV, <span class="t-p">Value</span>: production }
+              - { <span class="t-p">Name</span>: PUBLIC_ORIGIN, <span class="t-p">Value</span>: { <span class="t-p">Ref</span>: PublicOrigin } }
+            <span class="t-p">RuntimeEnvironmentSecrets</span>:
+              - { <span class="t-p">Name</span>: DATABASE_URL, <span class="t-p">Value</span>: { <span class="t-p">Ref</span>: DatabaseSecretArn } }
+              - { <span class="t-p">Name</span>: TOKEN_SECRET, <span class="t-p">Value</span>: { <span class="t-p">Ref</span>: TokenSecretArn } }
+      <span class="t-p">InstanceConfiguration</span>:
+        <span class="t-p">InstanceRoleArn</span>: { <span class="t-s">'Fn::GetAtt'</span>: [InstanceRole, Arn] }
+      <span class="t-p">HealthCheckConfiguration</span>:
+        <span class="t-p">Protocol</span>: HTTP
+        <span class="t-p">Path</span>: /healthz
+        <span class="t-p">Interval</span>: <span class="t-n">10</span>
+        <span class="t-p">Timeout</span>: <span class="t-n">5</span>
+        <span class="t-p">HealthyThreshold</span>: <span class="t-n">1</span>
+        <span class="t-p">UnhealthyThreshold</span>: <span class="t-n">5</span>
+<span class="t-p">Outputs</span>:
+  <span class="t-p">ServiceUrl</span>: { <span class="t-p">Value</span>: { <span class="t-s">'Fn::GetAtt'</span>: [Service, ServiceUrl] } }</code></pre><p class="figcap">It creates only the service and its roles; the database and the secrets are passed in by ARN. Environment settings are lists of Name/Value pairs, which is what CloudFormation expects, and an instance role reads the secrets. Written to the schema but not linted or deployed here.</p></section><section data-tab="Dockerfile"><div class="cap"><b>Dockerfile</b><span>a starting point; not built here</span></div><pre class="code server" tabindex="0"><code><span class="t-c"># Teaching image. Not built or run where this was written (no Docker daemon was available),</span>
+<span class="t-c"># so treat it as a starting point and build it before relying on it.</span>
+FROM node:22-alpine
+WORKDIR /app
+
+<span class="t-c"># Dependencies first, so this layer is cached until package files change.</span>
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY . .
+<span class="t-c"># Type-checks and bundles the tutorial and the app into dist/, which the server serves in production.</span>
+RUN npm run build
+
+ENV NODE_ENV=production HOST=0.0.0.0 PORT=3102
+EXPOSE 3102
+
+<span class="t-c"># /healthz needs no token and reports whether the database answers.</span>
+HEALTHCHECK --interval=15s --timeout=3s --start-period=20s CMD wget -qO- http://127.0.0.1:3102/healthz || exit 1
+
+USER node
+<span class="t-c"># In production the server needs DATABASE_URL, TOKEN_SECRET and PUBLIC_ORIGIN, and stops with a clear error without them.</span>
+CMD [<span class="t-s">"npm"</span>, <span class="t-s">"start"</span>]</code></pre><p class="figcap">There was no Docker daemon where this was written, so it has not been built. The health check calls <code>/healthz</code>.</p></section></div></div>
+  <p>The design ideas in the sketch are sound, and worth stating as rules. <strong>Migrations run before traffic</strong>, as a separate step, and every statement is safe to rerun. <strong>Secrets stay out of images</strong> and arrive as environment secrets. <strong>Health checks</strong> gate readiness. <strong>Shutdown drains</strong>: <code>main.ts</code> handles <code>SIGINT</code> and <code>SIGTERM</code> by closing the server, then the product APIs, then the database. <strong>Workers tolerate duplicates</strong>, because leases guarantee at-least-once, never exactly-once.</p>
+
+  <h3>The distance to production</h3>
+  <p>Working through the files against the code turned up a list. None of it is hidden; most of it the README states plainly. It is the checklist a first production deployment has to finish, and seven of the eight are now done:</p>
+  <div class="panel"><div class="panel-hd"><h3 class="ph">Interactive · Readiness checklist</h3><span class="qz-score" id="rd-score" aria-live="polite">7 / 8</span></div><div class="panel-bd">
+    <ul style="list-style:none;padding:0;max-width:none;margin:0">
+    <li style="padding:10px 0;border-bottom:1px solid var(--rule)"><label style="display:flex;gap:12px;align-items:flex-start;cursor:pointer"><input type="checkbox" class="rd-ck" style="margin-top:5px" checked><span><span>A container image can be built.</span><br><span class="figcap"><strong>Written, not built.</strong> A <code>Dockerfile</code> and <code>.dockerignore</code> are in the repo. There was no Docker daemon where they were written, so build it before relying on it.</span></span></label></li><li style="padding:10px 0;border-bottom:1px solid var(--rule)"><label style="display:flex;gap:12px;align-items:flex-start;cursor:pointer"><input type="checkbox" class="rd-ck" style="margin-top:5px" checked><span><span>A health endpoint exists.</span><br><span class="figcap"><strong>Fixed.</strong> <code>GET /healthz</code> runs <code>SELECT 1</code> and answers 200, or 503 if the database is unreachable. It needs no token. The container and the App Runner health check use it.</span></span></label></li><li style="padding:10px 0;border-bottom:1px solid var(--rule)"><label style="display:flex;gap:12px;align-items:flex-start;cursor:pointer"><input type="checkbox" class="rd-ck" style="margin-top:5px" checked><span><span>The token secret is set.</span><br><span class="figcap"><strong>Enforced.</strong> With <code>NODE_ENV=production</code> the server refuses to start without <code>TOKEN_SECRET</code>, instead of inventing a random key for each process. The template passes it from Secrets Manager.</span></span></label></li><li style="padding:10px 0;border-bottom:1px solid var(--rule)"><label style="display:flex;gap:12px;align-items:flex-start;cursor:pointer"><input type="checkbox" class="rd-ck" style="margin-top:5px" checked><span><span>The public origin is set.</span><br><span class="figcap"><strong>Enforced.</strong> The same startup check requires <code>PUBLIC_ORIGIN</code>, along with <code>DATABASE_URL</code>. The test <code>production refuses to start without its required settings</code> runs the real entry point and reads the error.</span></span></label></li><li style="padding:10px 0;border-bottom:1px solid var(--rule)"><label style="display:flex;gap:12px;align-items:flex-start;cursor:pointer"><input type="checkbox" class="rd-ck" style="margin-top:5px"><span><span>A real identity provider verifies tokens.</span><br><span class="figcap">In production <code>/dev/token</code>, <code>/authorize</code> and <code>/token</code> are not mounted, so nothing can mint a token. Verification would use the provider’s keys, not a shared HS256 secret. This one is yours to build.</span></span></label></li><li style="padding:10px 0;border-bottom:1px solid var(--rule)"><label style="display:flex;gap:12px;align-items:flex-start;cursor:pointer"><input type="checkbox" class="rd-ck" style="margin-top:5px" checked><span><span>Seed data stays out of the database.</span><br><span class="figcap"><strong>Fixed.</strong> <code>main.ts</code> seeds only when <code>NODE_ENV</code> is not <code>production</code>, or when <code>SEED_DEMO_DATA=1</code> is set on purpose. Provisioning real members is still yours to build.</span></span></label></li><li style="padding:10px 0;border-bottom:1px solid var(--rule)"><label style="display:flex;gap:12px;align-items:flex-start;cursor:pointer"><input type="checkbox" class="rd-ck" style="margin-top:5px" checked><span><span>Something processes the jobs.</span><br><span class="figcap"><strong>Fixed.</strong> <code>src/worker.ts</code> runs in the process by default, and <code>npm run worker</code> runs it separately (Chapter 07).</span></span></label></li><li style="padding:10px 0;border-bottom:1px solid var(--rule)"><label style="display:flex;gap:12px;align-items:flex-start;cursor:pointer"><input type="checkbox" class="rd-ck" style="margin-top:5px" checked><span><span>Limits are shared across replicas.</span><br><span class="figcap"><strong>Fixed.</strong> The token bucket lives in PostgreSQL (<code>SharedRate</code>). The concurrency caps stay per process on purpose (Chapter 02).</span></span></label></li>
+    </ul>
+  </div></div>
+  <div class="callout"><span class="tag">Why list gaps</span><p>A teaching repository is allowed to be incomplete. What it must not do is let the reader assume the missing parts are there. The point of this chapter is the skill underneath: reading a deployment sketch and asking, for each requirement, &ldquo;where in these files is that?&rdquo;.</p></div>
+
+  <h3>Findings, in one place</h3>
+  <div class="tbl-wrap"><table><thead><tr><th scope="col">Where</th><th scope="col">What was found</th><th scope="col">Status</th><th scope="col">Chapter</th></tr></thead><tbody><tr><th scope="row" class="lbl">Tools</th><td>The job tools bypassed the limiter, the audit trail and the structured error shape</td><td><span class="chip ok">fixed</span></td><td>00, 01, 09</td></tr><tr><th scope="row" class="lbl"><code>Jobs</code></th><td>A viewer could queue jobs: the plan was checked, the role was not</td><td><span class="chip ok">fixed</span></td><td>07</td></tr><tr><th scope="row" class="lbl"><code>Jobs</code></th><td>No consumer, and attempts were unbounded; the lease owner was not checked on completion</td><td><span class="chip ok">fixed</span></td><td>07</td></tr><tr><th scope="row" class="lbl"><code>SafeImporter</code></th><td>IPv4-mapped IPv6, <code>::</code> and <code>100.64.0.0/10</code> passed the address check</td><td><span class="chip ok">fixed</span></td><td>06</td></tr><tr><th scope="row" class="lbl"><code>FairLimiter</code></th><td>In-process bucket multiplied by the replica count; one member could hold every slot</td><td><span class="chip ok">fixed</span></td><td>02</td></tr><tr><th scope="row" class="lbl"><code>Budget</code></th><td>Actual cost could exceed the estimate; holds never expired</td><td><span class="chip ok">fixed</span></td><td>03</td></tr><tr><th scope="row" class="lbl"><code>CircuitBreaker</code></th><td>Defined, untested, unused</td><td><span class="chip ok">fixed</span></td><td>05</td></tr><tr><th scope="row" class="lbl"><code>nextHop</code></th><td>Not attached to any tool</td><td><span class="chip ok">fixed</span></td><td>08</td></tr><tr><th scope="row" class="lbl">Deployment</th><td>No health route; demo data seeded in production; secret and origin not required; AWS template used the wrong shape for its environment lists</td><td><span class="chip ok">fixed</span></td><td>10</td></tr><tr><th scope="row" class="lbl"><code>SafeImporter</code></th><td>The name is resolved twice, so DNS can change between the check and the connection</td><td><span class="chip warn">open</span></td><td>06</td></tr><tr><th scope="row" class="lbl">Deployment</th><td>The Dockerfile and template are written but not built, linted or deployed</td><td><span class="chip warn">open</span></td><td>10</td></tr><tr><th scope="row" class="lbl">Identity</th><td>A real provider and real member provisioning are yours to add</td><td><span class="chip warn">open</span></td><td>10</td></tr></tbody></table></div>
+  <p>MCP 102’s fixes (the 401 challenge, the released operation key, the resource not-found error and the wired-in breaker) apply here as well, because this repository shares that code. What is left is short. The name is still resolved twice in the URL importer, so keep an egress proxy or network policy in front of it. A real identity provider and member provisioning are yours to add. And the Dockerfile and the template need a first build and a first deploy, with <code>cfn-lint</code>, before you trust them.</p>
+
+</section>
+
+<!-- ============ 11 ============ -->
+<section class="chapter" id="ch11">
+  <div class="eyebrow">Chapter 11 · Check yourself</div>
+  <h2>Check yourself</h2>
+  <p class="lede">Eight questions. As before, the explanations are the point.</p>
+
+  <div class="panel" data-w="quiz" data-src="qz-103"><div class="panel-hd"><h3 class="ph">Interactive · Knowledge check</h3><div class="qz-tools"><span class="qz-score" aria-live="polite">0 / 8</span><button class="btn ghost qz-reset" type="button">Start over</button></div></div><div class="panel-bd qz-body"></div><script type="application/json" id="qz-103">[{"q":"A viewer on the Pro plan asks to create a task. Which check fails?","o":["The plan entitlement","The role check","The tenant scope"],"a":1,"w":"Role answers what a person may do to the data; plan answers what the customer bought. A viewer is refused by \u003ccode>writeAllowed()\u003c/code> with \u003ccode>FORBIDDEN\u003c/code>, whatever plan they are on."},{"q":"An organisation may run three calls at once and one member at most two. Alice already has two running. She starts a third, then Bob starts one. What happens?","o":["Both are refused","Alice’s third is refused and Bob is admitted","Both are admitted"],"a":1,"w":"The per-member cap stops one user taking every slot, so a colleague can always get in. The organisation cap is what protects the process from a whole tenant."},{"q":"Why does \u003ccode>guarded()\u003c/code> call \u003ccode>leave()\u003c/code> inside a \u003ccode>finally\u003c/code> block?","o":["To log the call","So the slot is returned on every path, including errors","To speed up the next request"],"a":1,"w":"A permit that is not returned is a slot lost until restart. Every acquire needs exactly one release on every path."},{"q":"Three concurrent reservations of 600, 600 and 300 hit an allowance of 1000. What is the outcome, and why is it safe?","o":["All three succeed; the database is big enough","Two succeed and one is refused, because check and increment are one conditional UPDATE","One succeeds; the rest queue"],"a":1,"w":"The condition and the increment are the same statement, so no two calls can both take the last unit. A read followed by a write would have the race."},{"q":"A write times out and you cannot tell whether it happened. What is the safe retry?","o":["Retry with a brand-new operation key","Retry with the same operation key","Never retry writes"],"a":1,"w":"The same key returns the stored result if the work completed. A new key would create a duplicate. (If the server crashed mid-way you get \u003ccode>OUTCOME_UNKNOWN\u003c/code> and must inspect first.)"},{"q":"A URL check tests whether an address starts with \u003ccode>127.\u003c/code> or \u003ccode>169.254.\u003c/code>. Which address slips through?","o":["127.0.0.1","::ffff:169.254.169.254","10.1.2.3"],"a":1,"w":"IPv4-mapped IPv6 looks like an IPv6 string but means the IPv4 address. Prefix matching on text misses it; parse the address, unwrap the mapping, then compare ranges."},{"q":"A worker leases a job and crashes. What happens next in this design?","o":["The job is lost","After the lease expires another worker can lease it, so it may run twice","The job is marked failed immediately"],"a":1,"w":"A lease is a timed claim, so crashes need no detection. The trade is at-least-once delivery, so the work must tolerate repeats, and a job that keeps crashing its worker is dead-lettered once its attempts run out."},{"q":"You add \u003ccode>task_id\u003c/code> as a metric label. What is the likely consequence?","o":["Nothing; labels are free","A series per task, so storage and cost grow without bound","Faster queries"],"a":1,"w":"Every distinct label value creates another time series. Unbounded identifiers belong in logs and traces, not metric labels."}]</script></div>
+  <p>Missed one? The chapter is named in the explanation’s topic: limits in 02, budgets in 03, retries in 04, URL import in 06, jobs in 07, metrics in 09.</p>
+
+</section>
+
+<div class="nextcourse"><div><small>Continue the series</small><strong>Economics, gateways and futures</strong></div><a href="https://tech.anujsadani.in/mcp-104/">Open MCP 104 →</a></div>
+
+</main>
+</div>
+</div>
+
+<script>
+(function(){
+"use strict";
+/* ---------- shared runtime: helpers ---------- */
+var $ = function (s, r) { return (r || document).querySelector(s); };
+var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+var esc = function (s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); };
+var el = function (tag, cls, html) { var e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
+var btn = function (label, cls) { var b = el("button", cls || "btn ghost"); b.type = "button"; b.textContent = label; return b; };
+
+/* sha-256 (sync, tiny) for the fingerprint demos: the server hashes with node:crypto */
+function sha256(str) {
+  var K = [], H = [], i, j;
+  function rr(x, n) { return (x >>> n) | (x << (32 - n)); }
+  var p = 2, c = 0;
+  while (c < 64) { var ok = true; for (j = 2; j * j <= p; j++) if (p % j === 0) { ok = false; break; } if (ok) { K[c] = (Math.pow(p, 1 / 3) * 4294967296) | 0; if (c < 8) H[c] = (Math.pow(p, 1 / 2) * 4294967296) | 0; c++; } p++; }
+  var bytes = unescape(encodeURIComponent(str)), l = bytes.length, w = [];
+  for (i = 0; i < l; i++) w[i >> 2] |= bytes.charCodeAt(i) << (24 - (i % 4) * 8);
+  w[l >> 2] |= 0x80 << (24 - (l % 4) * 8);
+  w[(((l + 8) >> 6) << 4) + 15] = l * 8;
+  for (var o = 0; o < w.length; o += 16) {
+    var a = H.slice(0), t = [];
+    for (i = 0; i < 64; i++) {
+      if (i < 16) t[i] = w[o + i] | 0;
+      else { var s0 = rr(t[i - 15], 7) ^ rr(t[i - 15], 18) ^ (t[i - 15] >>> 3), s1 = rr(t[i - 2], 17) ^ rr(t[i - 2], 19) ^ (t[i - 2] >>> 10); t[i] = (t[i - 16] + s0 + t[i - 7] + s1) | 0; }
+      var S1 = rr(a[4], 6) ^ rr(a[4], 11) ^ rr(a[4], 25), ch = (a[4] & a[5]) ^ (~a[4] & a[6]), t1 = (a[7] + S1 + ch + K[i] + t[i]) | 0;
+      var S0 = rr(a[0], 2) ^ rr(a[0], 13) ^ rr(a[0], 22), mj = (a[0] & a[1]) ^ (a[0] & a[2]) ^ (a[1] & a[2]), t2 = (S0 + mj) | 0;
+      a = [(t1 + t2) | 0, a[0], a[1], a[2], (a[3] + t1) | 0, a[4], a[5], a[6]];
+    }
+    for (i = 0; i < 8; i++) H[i] = (H[i] + a[i]) | 0;
+  }
+  return H.map(function (x) { return ("00000000" + (x >>> 0).toString(16)).slice(-8); }).join("");
+}
+/* same canonicalisation as src/policy.ts fingerprint(): sorted keys, recursively */
+function canonical(x) { return Array.isArray(x) ? x.map(canonical) : x && typeof x === "object" ? Object.keys(x).sort().reduce(function (o, k) { o[k] = canonical(x[k]); return o; }, {}) : x; }
+function fingerprint(v) { return sha256(JSON.stringify(canonical(v))); }
+
+/* ---------- rail highlighting ---------- */
+var links = $$(".rail a");
+if ("IntersectionObserver" in window) {
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (en) {
+      if (!en.isIntersecting) return;
+      links.forEach(function (a) { var on = a.getAttribute("href") === "#" + en.target.id; a.classList.toggle("on", on); if (on) a.setAttribute("aria-current", "location"); else a.removeAttribute("aria-current"); });
+    });
+  }, { rootMargin: "-15% 0px -70% 0px" });
+  $$("main .chapter").forEach(function (s) { io.observe(s); });
+}
+
+/* ---------- tabs: every <section data-tab> is readable without JS ---------- */
+$$('[data-w="tabs"]').forEach(function (root) {
+  var secs = $$("section[data-tab]", root);
+  if (secs.length < 2) return;
+  var seg = el("div", "seg"); seg.setAttribute("role", "group"); seg.setAttribute("aria-label", "Choose a view");
+  var bs = secs.map(function (s, i) {
+    var b = el("button"); b.type = "button"; b.textContent = s.getAttribute("data-tab"); b.setAttribute("aria-pressed", String(i === 0)); s.hidden = i !== 0;
+    b.addEventListener("click", function () { bs.forEach(function (x, j) { x.setAttribute("aria-pressed", String(x === b)); secs[j].hidden = x !== b; }); });
+    seg.appendChild(b); return b;
+  });
+  $(".panel-hd", root).appendChild(seg);
+});
+
+/* ---------- trace: step through a flow, frames accumulate in the wire tap ---------- */
+$$('[data-w="trace"]').forEach(function (root) {
+  var lanes = JSON.parse($(".lanes", root).getAttribute("data-lanes"));
+  var items = $$("ol.steps > li", root), i = -1;
+  var laneBox = $(".lanes", root);
+  laneBox.innerHTML = lanes.map(function (l) { return '<div class="lane ' + l.c + '" data-id="' + l.id + '"><b>' + esc(l.t) + "</b><span>" + esc(l.s || "") + "</span></div>"; }).join("");
+  var ctl = el("div", "ctl"), reset = btn("Reset"), back = btn("← Back"), next = btn("Next step →", "btn");
+  ctl.appendChild(reset); ctl.appendChild(back); ctl.appendChild(next);
+  $(".panel-hd", root).appendChild(ctl);
+  var view = el("div", "tv", '<p class="tv-count"></p><p class="tv-title"></p><p class="tv-desc"></p><p class="tv-badge"></p><div class="tap"><div class="tap-hd">Wire tap · frames so far</div><div class="tap-bd" tabindex="0"></div></div>');
+  laneBox.insertAdjacentElement("afterend", view);
+  root.classList.add("js");
+  function render() {
+    var tap = $(".tap-bd", view);
+    $$(".lane", laneBox).forEach(function (n) { n.classList.toggle("on", i >= 0 && n.getAttribute("data-id") === items[i].getAttribute("data-lane")); });
+    if (i < 0) {
+      $(".tv-count", view).textContent = "Not started"; $(".tv-title", view).textContent = "Nothing has happened yet";
+      $(".tv-desc", view).textContent = "Press Next step. Each step lights the layer that acts and adds its frames to the tap."; $(".tv-badge", view).innerHTML = "";
+      tap.innerHTML = '<p class="figcap empty">Empty. Nothing has been sent.</p>';
+    } else {
+      var it = items[i], tone = it.getAttribute("data-tone"), badge = it.getAttribute("data-badge");
+      $(".tv-count", view).textContent = "Step " + (i + 1) + " of " + items.length;
+      $(".tv-title", view).innerHTML = $(".st", it).innerHTML; $(".tv-desc", view).innerHTML = $(".sd", it).innerHTML;
+      $(".tv-badge", view).innerHTML = badge ? '<span class="key ' + tone + '" style="font-size:10px">' + esc(badge) + "</span>" : "";
+      var out = [];
+      items.slice(0, i + 1).forEach(function (s, j) {
+        $$(".fr", s).forEach(function (f) {
+          var c = f.cloneNode(true); if (j !== i) c.classList.add("old");
+          var tg = $(".frame-tag", c); tg.textContent = (j + 1) + " · " + tg.textContent; out.push(c);
+        });
+      });
+      tap.innerHTML = ""; if (!out.length) tap.innerHTML = '<p class="figcap empty">No frame on the wire at this step: the work happens inside a process.</p>';
+      out.forEach(function (c) { tap.appendChild(c); });
+      var last = tap.lastElementChild; if (last && out.length > 1) tap.scrollTop = last.offsetTop - 12;
+    }
+    back.disabled = i < 0; next.disabled = i >= items.length - 1;
+  }
+  next.addEventListener("click", function () { if (i < items.length - 1) { i++; render(); } });
+  back.addEventListener("click", function () { if (i >= 0) { i--; render(); } });
+  reset.addEventListener("click", function () { i = -1; render(); });
+  render();
+});
+
+/* ---------- quiz ---------- */
+$$('[data-w="quiz"]').forEach(function (root) {
+  var qs = JSON.parse($("#" + root.getAttribute("data-src")).textContent), body = $(".qz-body", root), score = $(".qz-score", root), done = {};
+  function paint() {
+    body.innerHTML = "";
+    qs.forEach(function (q, qi) {
+      var box = el("div", "qz-q"); box.appendChild(el("p", "qz-t", "<b>" + (qi + 1) + ".</b> " + q.q));
+      var g = el("div", "qz-o"); g.setAttribute("role", "group"); g.setAttribute("aria-label", "Answers to question " + (qi + 1));
+      var why = el("p", "qz-why"); why.hidden = true; why.setAttribute("role", "status");
+      q.o.forEach(function (o, oi) {
+        var b = el("button", "", esc(o)); b.type = "button";
+        b.addEventListener("click", function () {
+          if (done[qi] !== undefined) return; done[qi] = oi;
+          $$("button", g).forEach(function (x, xi) { x.disabled = true; if (xi === q.a) x.classList.add("right"); if (xi === oi) x.classList.add("pick"); if (xi === oi && oi !== q.a) x.classList.add("wrong"); });
+          why.innerHTML = "<b>" + (oi === q.a ? "Correct" : "Not quite") + ".</b> " + q.w; why.hidden = false; tally();
+        });
+        g.appendChild(b);
+      });
+      box.appendChild(g); box.appendChild(why); body.appendChild(box);
+    });
+  }
+  function tally() { var n = 0; Object.keys(done).forEach(function (k) { if (done[k] === qs[k].a) n++; }); score.textContent = n + " / " + qs.length; }
+  $(".qz-reset", root).addEventListener("click", function () { done = {}; tally(); paint(); });
+  paint();
+});
+
+/* ================= MCP 103 simulators: ports of the repo's own logic ================= */
+function say(target, cls, label, text) { target.innerHTML = '<span class="chip ' + cls + '">' + esc(label) + "</span> " + (text ? esc(text) : ""); }
+function readout(target, items) { target.innerHTML = items.map(function (i) { return "<div><small>" + esc(i[0]) + "</small><strong>" + esc(i[1]) + "</strong></div>"; }).join(""); }
+function logAdd(ul, t, cls, label, text) { var li = document.createElement("li"); li.innerHTML = '<span class="t">' + esc(t) + '</span><span class="chip ' + cls + '">' + esc(label) + "</span> " + esc(text || ""); ul.insertBefore(li, ul.firstChild); }
+
+/* ---------- 02 · FairLimiter ---------- */
+(function () {
+  if (!$("#sim-limiter")) return;
+  var L;
+  var orgOf = function (w) { return w === "eve" ? "rival" : "acme"; };
+  function reset() { L = { cap: 3, refill: 1, conc: 3, per: 2, now: 0, buckets: {}, active: {}, by: {}, holds: [] }; paint(); say($("#lm-verdict"), "info", "ready", "Call as Alice, twice, then as Bob and as Eve."); }
+  function tokens(w) { var b = L.buckets[orgOf(w) + ":" + w]; if (!b) return L.cap; return Math.min(L.cap, b.tokens + (L.now - b.at) / 1000 * L.refill); }
+  function paint() {
+    var f = function (n) { return (Math.round(n * 10) / 10).toString(); };
+    readout($("#lm-read"), [["clock", L.now / 1000 + " s"], ["alice tokens", f(tokens("alice"))], ["bob tokens", f(tokens("bob"))], ["eve tokens", f(tokens("eve"))], ["acme slots used", (L.active.acme || 0) + " / " + L.conc], ["alice in flight", (L.by["acme:alice"] || 0) + " / " + L.per], ["bob in flight", (L.by["acme:bob"] || 0) + " / " + L.per], ["rival slots used", (L.active.rival || 0) + " / " + L.conc]]);
+  }
+  function enter() {
+    var who = $("#lm-who").value, cost = +$("#lm-cost").value, org = orgOf(who), key = org + ":" + who, v = $("#lm-verdict");
+    var b = L.buckets[key] || { tokens: L.cap, at: L.now };
+    b.tokens = Math.min(L.cap, b.tokens + (L.now - b.at) / 1000 * L.refill); b.at = L.now;
+    if (b.tokens < cost) { paint(); return say(v, "no", "RATE_LIMITED", "Your request allowance is temporarily exhausted. Retry later. (retryable)"); }
+    var active = L.active[org] || 0;
+    if (active >= L.conc) { paint(); return say(v, "no", "CONCURRENCY_LIMIT", "This organization has too many operations in flight. (retryable)"); }
+    var mine = L.by[key] || 0;
+    if (mine >= L.per) { paint(); return say(v, "no", "CONCURRENCY_LIMIT", "You have too many operations in flight. (retryable)"); }
+    b.tokens -= cost; L.buckets[key] = b; L.active[org] = active + 1; L.by[key] = mine + 1;
+    L.holds.push({ org: org, key: key, leak: $("#lm-leak").checked, who: who });
+    paint(); say(v, "ok", "admitted", who + " spent " + cost + " token(s) and holds a slot" + ($("#lm-leak").checked ? " (this call will forget to release it)" : "."));
+  }
+  $("#lm-enter").addEventListener("click", enter);
+  $("#lm-release").addEventListener("click", function () {
+    var h = L.holds.shift(); if (!h) return say($("#lm-verdict"), "info", "nothing running", "No call is holding a slot.");
+    if (h.leak) { paint(); return say($("#lm-verdict"), "warn", "slot leaked", h.who + "'s call finished but never called leave(). That slot is gone until the process restarts."); }
+    L.active[h.org] = Math.max(0, (L.active[h.org] || 1) - 1); L.by[h.key] = Math.max(0, (L.by[h.key] || 1) - 1); paint(); say($("#lm-verdict"), "ok", "released", h.who + "'s call finished and returned its slot.");
+  });
+  $("#lm-tick").addEventListener("click", function () { L.now += 1000; paint(); say($("#lm-verdict"), "info", "+1 s", "Buckets refill at 1 token per second, up to 3."); });
+  $("#lm-reset").addEventListener("click", reset); reset();
+})();
+
+/* ---------- 03 · Budget: reserve, expire, settle at most the reservation ---------- */
+(function () {
+  if (!$("#sim-budget")) return;
+  var B, TTL = 5;
+  function reset() { B = { allow: 1000, spent: 0, reserved: 0, res: [], n: 0, now: 0 }; $("#bg-log").innerHTML = ""; paint(); say($("#bg-verdict"), "info", "ready", "Reserve an estimate, then settle it."); }
+  function paint() {
+    readout($("#bg-read"), [["allowance", B.allow], ["spent", B.spent], ["reserved", B.reserved], ["headroom", B.allow - B.spent - B.reserved]]);
+    $("#bg-bar1").style.width = Math.min(100, (B.spent + B.reserved) / B.allow * 100) + "%";
+  }
+  function sweep() { B.res.forEach(function (r) { if (r.state === "reserved" && r.exp <= B.now) { r.state = "expired"; B.reserved -= r.amount; logAdd($("#bg-log"), "sweep", "warn", r.id, "expired: hold of " + r.amount + " released"); } }); }
+  $("#bg-res").addEventListener("click", function () {
+    var n = Math.floor(+$("#bg-est").value);
+    if (!(n >= 1)) return say($("#bg-verdict"), "no", "INVALID_COST", "Estimate must be a positive integer.");
+    sweep();
+    if (B.spent + B.reserved + n > B.allow) { logAdd($("#bg-log"), "reserve " + n, "no", "BUDGET_EXCEEDED", "The organization budget cannot reserve this work."); paint(); return say($("#bg-verdict"), "no", "BUDGET_EXCEEDED", "spent + reserved + " + n + " would be " + (B.spent + B.reserved + n) + ", over " + B.allow + "."); }
+    B.reserved += n; var id = "res-" + (++B.n); B.res.push({ id: id, amount: n, exp: B.now + TTL, state: "reserved" });
+    logAdd($("#bg-log"), "reserve " + n, "ok", id, "reserved, expires at minute " + (B.now + TTL)); paint(); say($("#bg-verdict"), "ok", id + " reserved", "reserved " + n + ".");
+  });
+  $("#bg-set").addEventListener("click", function () {
+    var r = B.res.filter(function (x) { return x.state === "reserved" || x.state === "expired"; })[0], act = Math.floor(+$("#bg-act").value);
+    if (!r) return say($("#bg-verdict"), "no", "INVALID_RESERVATION", "Reservation is missing or already settled.");
+    var charge = Math.min(act, r.amount);
+    if (r.state === "reserved") B.reserved -= r.amount;
+    B.spent += charge; var was = r.state; r.state = "settled";
+    logAdd($("#bg-log"), "settle " + act, act > r.amount ? "warn" : "ok", r.id, "estimate " + r.amount + ", actual " + act + (act > r.amount ? ": charged only " + charge : "") + (was === "expired" ? " (late: its hold had already been released)" : ""));
+    paint();
+    if (act > r.amount) say($("#bg-verdict"), "warn", "charge capped", r.id + ": the work cost " + act + " but only " + charge + " was charged, because a reservation is a ceiling.");
+    else say($("#bg-verdict"), "ok", r.id + " settled", "recorded " + charge + (was === "expired" ? ", without releasing the hold twice." : ", and released the rest of the hold."));
+  });
+  $("#bg-time").addEventListener("click", function () { B.now += 6; paint(); say($("#bg-verdict"), "info", "+6 minutes", "Unsettled holds are now past their expiry. They are released by the next reservation."); });
+  $("#bg-reset").addEventListener("click", reset); reset();
+})();
+
+/* ---------- 04 · the response that never arrived ---------- */
+(function () {
+  if (!$("#sim-lost")) return;
+  $$("#sim-lost [data-s]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var s = b.getAttribute("data-s"), ul = $("#ls-log"), v = $("#ls-verdict"); ul.innerHTML = "";
+      var add = function (t, cls, l, x) { var li = document.createElement("li"); li.innerHTML = '<span class="t">' + t + '</span><span class="chip ' + cls + '">' + esc(l) + "</span> " + esc(x); ul.appendChild(li); };
+      add("1", "info", "client", 'create_task { title: "Write notes", operationKey: "K1" }');
+      if (s === "crash") add("2", "warn", "server", "inserted task-4, then the process died before recording the result");
+      else add("2", "ok", "server", "inserted task-4 and recorded the result against K1");
+      add("3", "warn", "network", "the response is lost. The client sees a timeout.");
+      if (s === "giveup") { add("4", "info", "client", "gives up and tells the user it failed"); say(v, "warn", "1 task exists", "But the user was told it failed. The state is fine and the belief is wrong."); }
+      if (s === "newkey") { add("4", "info", "client", 'retries as a new call, operationKey "K2"'); add("5", "no", "server", "K2 is new, so it inserts task-5"); say(v, "no", "2 tasks exist", "A duplicate. Nothing could tell these calls were the same intent."); }
+      if (s === "samekey") { add("4", "info", "client", 'retries with the same key "K1"'); add("5", "ok", "server", "K1 found, same fingerprint: returns the stored result task-4"); say(v, "ok", "1 task exists", "The client learns the truth and nothing is duplicated."); }
+      if (s === "crash") { add("4", "info", "client", 'retries with the same key "K1"'); add("5", "no", "server", "K1 is claimed but has no result: OUTCOME_UNKNOWN"); add("6", "info", "client", 'searches for "Write notes": finds task-4, treats the work as done'); say(v, "ok", "inspect, then decide", "The server refused to guess. Looking was cheap and correct."); }
+    });
+  });
+})();
+
+/* ---------- 05 · CircuitBreaker ---------- */
+(function () {
+  if (!$("#sim-cb")) return;
+  var C, TH = 3, REC = 1000;
+  function reset() { C = { f: 0, opened: 0, now: 0 }; $("#cb-log").innerHTML = ""; paint(); }
+  function stateName() { return C.f >= TH ? (C.now - C.opened < REC ? "open" : "half-open") : "closed"; }
+  function paint() { readout($("#cb-read"), [["state", stateName()], ["consecutive failures", C.f + " / " + TH], ["since last failure", C.f ? C.now - C.opened + " ms" : "—"], ["clock", C.now + " ms"]]); }
+  function call(ok) {
+    var t = "t+" + C.now;
+    if (C.f >= TH && C.now - C.opened < REC) { logAdd($("#cb-log"), t, "no", "CIRCUIT_OPEN", "refused without calling the dependency (retryable)"); return paint(); }
+    var probe = C.f >= TH;
+    if (ok) { C.f = 0; logAdd($("#cb-log"), t, "ok", probe ? "probe succeeded" : "served", probe ? "the breaker closes" : "the dependency answered"); }
+    else { C.f++; C.opened = C.now; logAdd($("#cb-log"), t, "no", probe ? "probe failed" : "failure " + C.f, probe ? "the breaker re-opens for another 1000 ms" : "the dependency errored"); }
+    paint();
+  }
+  $("#cb-fail").addEventListener("click", function () { call(false); });
+  $("#cb-ok").addEventListener("click", function () { call(true); });
+  $("#cb-500").addEventListener("click", function () { C.now += 500; paint(); });
+  $("#cb-1100").addEventListener("click", function () { C.now += 1100; paint(); });
+  $("#cb-reset").addEventListener("click", reset); reset();
+})();
+
+/* ---------- 06 · safe URL import ---------- */
+/* the ORIGINAL check: text prefixes. Kept so you can compare it with the current one. */
+function oldPrivate(ip) { return ip === "::1" || ip === "0.0.0.0" || ip.indexOf("127.") === 0 || ip.indexOf("10.") === 0 || ip.indexOf("192.168.") === 0 || ip.indexOf("169.254.") === 0 || ip.indexOf("fc") === 0 || ip.indexOf("fd") === 0 || ip.indexOf("fe80:") === 0 || /^172\.(1[6-9]|2\d|3[01])\./.test(ip); }
+/* the CURRENT check: a port of unmapIpv4() and privateAddress() in src/production.ts */
+function unmapIpv4(raw) {
+  var ip = raw.toLowerCase().split("%")[0], m = /^::(?:ffff:)?(\d+\.\d+\.\d+\.\d+)$/.exec(ip); if (m) return m[1];
+  m = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(ip); if (m) { var hi = parseInt(m[1], 16), lo = parseInt(m[2], 16); return (hi >> 8) + "." + (hi & 255) + "." + (lo >> 8) + "." + (lo & 255); }
+  return ip;
+}
+function repoPrivate(raw) {
+  var ip = unmapIpv4(raw), v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(ip);
+  if (v4) { var p = v4.slice(1).map(Number), a = p[0], b = p[1]; if (p.some(function (n) { return n > 255; })) return true; return a === 0 || a === 10 || a === 127 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || a >= 224; }
+  if (ip.indexOf(":") < 0) return true;
+  var global = /^[23][0-9a-f]{3}:/.test(ip), embeds = /^2002:/.test(ip) || /^2001:0{0,4}:/.test(ip) || /^2001:db8:/.test(ip);
+  return !global || embeds;
+}
+(function () {
+  if (!$("#sim-ssrf")) return;
+  var mode = "repo";
+  function paint() {
+    var out = $("#ss-out"), raw = $("#ss-url").value.trim(), url;
+    try { url = new URL(raw); } catch (e) { out.innerHTML = '<p><span class="chip warn">not a URL</span> <code>new URL()</code> throws before any check runs.</p>'; return; }
+    if (url.protocol !== "https:") { out.innerHTML = '<p><span class="chip no">URL_REJECTED</span> Only HTTPS URLs are allowed.</p>'; return; }
+    if (url.username || url.password) { out.innerHTML = '<p><span class="chip no">URL_REJECTED</span> Credentials in URLs are not allowed.</p>'; return; }
+    var answers = $("#ss-dns").value.split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+    if (!answers.length) { out.innerHTML = '<p><span class="chip no">URL_REJECTED</span> The URL resolves to a private or local network. (No answers.)</p>'; return; }
+    var bad = answers.filter(function (a) { return mode === "repo" ? repoPrivate(a) : oldPrivate(a); });
+    var table = '<table class="mini"><caption>Each address the name resolved to</caption><thead><tr><th scope="col">address</th><th scope="col">' + (mode === "repo" ? "current check" : "original check") + "</th></tr></thead><tbody>" + answers.map(function (a) { var b = mode === "repo" ? repoPrivate(a) : oldPrivate(a); return "<tr><td>" + esc(a) + '</td><td><span class="chip ' + (b ? "ok" : "no") + '">' + (b ? "blocked" : "allowed") + "</span></td></tr>"; }).join("") + "</tbody></table>";
+    out.innerHTML = (bad.length ? '<p><span class="chip ok">refused</span> <code>URL_REJECTED</code>: The URL resolves to a private or local network.</p>' : '<p><span class="chip no">would be fetched</span> Every answer looked public. ' + (answers.some(function (a) { return repoPrivate(a) && !oldPrivate(a); }) ? "<strong>The current check would have refused at least one of these.</strong>" : "") + "</p>") + table;
+  }
+  $("#ss-presets").addEventListener("click", function (e) { var b = e.target.closest("button"); if (!b) return; $("#ss-dns").value = b.getAttribute("data-a"); paint(); });
+  $("#ss-mode").addEventListener("click", function (e) { var b = e.target.closest("button"); if (!b) return; $$("#ss-mode button").forEach(function (x) { x.setAttribute("aria-pressed", String(x === b)); }); mode = b.getAttribute("data-m"); paint(); });
+  $("#ss-url").addEventListener("input", paint); $("#ss-dns").addEventListener("input", paint); paint();
+})();
+
+/* ---------- 07 · job leases, owners and attempts ---------- */
+(function () {
+  if (!$("#sim-jobs")) return;
+  var J, MAX = 3;
+  function reset() { J = { now: 0, jobs: [], n: 0 }; paint(); say($("#jb-verdict"), "info", "ready", "Enqueue a job, then lease it."); }
+  function paint() {
+    $("#jb-clock").textContent = J.now;
+    $("#jb-rows").innerHTML = J.jobs.length ? J.jobs.map(function (j) { var lapsed = j.status === "working" && j.lease < J.now; return "<tr><td>" + j.id + "</td><td>" + j.status + (lapsed ? " (lease lapsed)" : "") + "</td><td>" + j.attempts + "</td><td>" + (j.holder || "—") + "</td><td>" + (j.lease != null ? j.lease + " s" : "—") + "</td></tr>"; }).join("") : '<tr><td colspan="5" style="color:var(--ink-3)">(no jobs)</td></tr>';
+  }
+  function deadLetter() { J.jobs.forEach(function (j) { if (j.status === "working" && j.lease < J.now && j.attempts >= MAX) { j.status = "failed"; j.lease = null; j.holder = null; } }); }
+  $("#jb-add").addEventListener("click", function () { J.jobs.push({ id: "job-" + (++J.n), status: "queued", attempts: 0, holder: null, lease: null }); paint(); say($("#jb-verdict"), "ok", "queued", "job-" + J.n + " written to the table and a handle returned."); });
+  $$("#sim-jobs [data-w]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var w = b.getAttribute("data-w"); deadLetter();
+      var j = J.jobs.filter(function (x) { return (x.status === "queued" || (x.status === "working" && x.lease < J.now)) && x.attempts < MAX; })[0];
+      paint();
+      if (!j) return say($("#jb-verdict"), "warn", w + ": nothing to lease", "Any working job holds a live lease, and SKIP LOCKED passes over it. A job that used all " + MAX + " attempts is dead-lettered as failed, not leased again.");
+      j.status = "working"; j.lease = J.now + 30; j.attempts++; j.holder = w; paint();
+      say($("#jb-verdict"), "ok", w + " leased " + j.id, "attempt " + j.attempts + " of " + MAX + ", lease ends at " + j.lease + " s.");
+    });
+  });
+  function finish(w, kind) {
+    var j = J.jobs.filter(function (x) { return x.status === "working" && x.holder === w; })[0], v = $("#jb-verdict");
+    if (!j) return say(v, "warn", "no rows updated", w + " holds no working job, so there is nothing to " + kind + ". complete() and fail() match only the lease owner.");
+    if (j.lease < J.now) return say(v, "no", "lease lost", w + "’s lease on " + j.id + " has lapsed, so its " + kind + " is refused and the work may already belong to someone else.");
+    if (kind === "complete") { j.status = "completed"; j.lease = null; j.holder = null; paint(); return say(v, "ok", j.id + " completed", "recorded by " + w + ", which held the lease."); }
+    if (j.attempts >= MAX) { j.status = "failed"; paint(); j.lease = null; j.holder = null; paint(); return say(v, "no", j.id + " dead-lettered", "That was attempt " + MAX + " of " + MAX + ": the job is failed and keeps its reason."); }
+    j.status = "queued"; j.lease = null; j.holder = null; paint(); say(v, "warn", j.id + " back in the queue", "The attempt failed; " + (MAX - j.attempts) + " attempt(s) remain.");
+  }
+  $("#jb-c1").addEventListener("click", function () { finish("W1", "complete"); });
+  $("#jb-c2").addEventListener("click", function () { finish("W2", "complete"); });
+  $("#jb-f1").addEventListener("click", function () { finish("W1", "fail"); });
+  $("#jb-t").addEventListener("click", function () { J.now += 31; paint(); say($("#jb-verdict"), "info", "+31 s", "Any lease taken before now has lapsed."); });
+  $("#jb-reset").addEventListener("click", reset); reset();
+})();
+
+/* ---------- 08 · nextHop ---------- */
+(function () {
+  if (!$("#sim-hops")) return;
+  var H;
+  function reset() { H = { budget: 10, visited: ["teamspace"], left: 5000 }; paint(); say($("#hp-verdict"), "info", "ready", "Budget 10, deadline 5 s, at teamspace."); }
+  function paint() { readout($("#hp-read"), [["budget left", H.budget], ["deadline left", H.left + " ms"], ["servers in chain", H.visited.length + " / 5"], ["route", H.visited.join(" > ")]]); }
+  $("#hp-go").addEventListener("click", function () {
+    var s = $("#hp-server").value, c = Math.floor(+$("#hp-cost").value), v = $("#hp-verdict");
+    if (H.left <= 0) return say(v, "no", "DEADLINE", "Composite deadline expired.");
+    if (H.budget < c) return say(v, "no", "BUDGET_EXCEEDED", "Composite cost budget exhausted. (" + c + " needed, " + H.budget + " left; nothing was consumed)");
+    if (H.visited.indexOf(s) >= 0) return say(v, "no", "RECURSION", "Composite server cycle detected. " + s + " is already on the route.");
+    if (H.visited.length >= 5) return say(v, "no", "HOP_LIMIT", "Composite call depth exceeded.");
+    H.budget -= c; H.visited.push(s); paint(); say(v, "ok", "hop to " + s, "budget " + H.budget + " left.");
+  });
+  $("#hp-time").addEventListener("click", function () { H.left = Math.max(0, H.left - 2000); paint(); say($("#hp-verdict"), "info", "time passes", H.left + " ms left."); });
+  $("#hp-reset").addEventListener("click", reset); reset();
+})();
+
+/* ---------- 09 · metric label cardinality ---------- */
+(function () {
+  if (!$("#sim-labels")) return;
+  function val(c) { var v = c.getAttribute("data-v"); return v === "orgs" ? +$("#lb-orgs").value : v === "users" ? +$("#lb-users").value : +v; }
+  function paint() {
+    var n = 1, any = false; $$(".lb-ck").forEach(function (c) { if (c.checked) { n *= Math.max(1, val(c)); any = true; } });
+    if (!any) n = 1;
+    $("#lb-n").textContent = n.toLocaleString("en-US");
+    $("#lb-v").textContent = n <= 10000 ? "fine (rule of thumb)" : n <= 1000000 ? "costly (rule of thumb)" : "will hurt (rule of thumb)";
+  }
+  $$("#sim-labels input").forEach(function (x) { x.addEventListener("input", paint); }); paint();
+})();
+
+/* ---------- 10 · readiness checklist ---------- */
+(function () {
+  var cks = $$(".rd-ck"); if (!cks.length) return;
+  function paint() { $("#rd-score").textContent = cks.filter(function (x) { return x.checked; }).length + " / " + cks.length; }
+  cks.forEach(function (c) { c.addEventListener("change", paint); }); paint();
+})();
+
+})();
+</script>
 </body>
 </html>
