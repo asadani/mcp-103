@@ -7,12 +7,16 @@ operational decision can be followed from MCP call to product API and database.
 The course targets MCP `2026-07-28`, `@modelcontextprotocol/*` v2 and Node 22+.
 It runs locally without a model key or cloud account.
 
+## Interactive tutorial
+
+Read the hosted course at **[tech.anujsadani.in/mcp-103](https://tech.anujsadani.in/mcp-103/)**. The repository root is the tutorial page; the runnable operator lab remains available locally at `http://127.0.0.1:5173/app.html`.
+
 ## Run
 
 ```powershell
 npm install
 npm run dev       # API + MCP at http://127.0.0.1:3102
-npm run ui        # UI at http://127.0.0.1:5173
+npm run ui        # tutorial at /, product UI at /app.html
 npm test
 npm run lab
 ```
