@@ -553,7 +553,7 @@ figure{margin:0}
   <div class="callout ok"><span class="tag">Fixed in this repo</span><p>This table used to have holes, and how they were found is the lesson. <code>start_release_job</code> and <code>get_job</code> sat outside the pipeline the other seven tools shared: no rate-limit permit, no audit row, plain-text errors, and job creation checked the plan but not the role. Nothing in the tests noticed, because each control was tested on its own. Every tool now goes through <code>guarded()</code>, and tests drive the controls through the MCP server together. A control that exists is not a control that applies, so keep asking where each one is wired in.</p></div>
 
   <h3>The tests, as a starting point</h3>
-  <div class="run"><div class="run-hd"><span>Captured run</span><span>captured 2026-09-20 · thirty-five tests, all passing</span></div><pre tabindex="0"><code><span class="t-k">$ </span>npm test
+  <div class="run"><div class="run-hd"><span>Representative run</span><span>run npm test for the current count</span></div><pre tabindex="0"><code><span class="t-k">$ </span>npm test
 ✔ an unreachable product API opens the circuit, and calls stop reaching it
 ✔ a definite refusal from a healthy dependency is not an outage
 ✔ tenant and team scope known identifiers
@@ -570,7 +570,7 @@ figure{margin:0}
 ✔ the /mcp edge answers 401 with a WWW-Authenticate challenge, never a 500
 ✔ a refused write releases its key, so the same key can be used again
 ✔ publishing without an approval does not burn the operation key
-✔ an unclassified failure keeps the claim, because the outcome really is unknown
+✔ a failed transaction rolls back both the write and its claim
 ✔ a completed operation is replayed and its work is not run twice
 ✔ MCP discovery, tool call and resource read work end to end
 ✔ a reservation that is never settled expires and frees its hold
@@ -592,7 +592,7 @@ figure{margin:0}
 ℹ tests 35
 ℹ pass 35
 ℹ fail 0</code></pre></div>
-  <p>All thirty-five pass. They check each control on its own with a fake clock or an injected resolver, and they drive the controls through the MCP server together, which is exactly the gap the table above measures.</p>
+  <p>The suite checks each control on its own with a fake clock or injected dependency, then drives the controls through the MCP server together. Run it for the current count and result.</p>
   <div class="callout"><span class="tag">How to read this course</span><p>The same conventions as 102. <em>Captured run</em> blocks and every JSON-RPC frame come from running this repository, and excerpts are pulled from the source and re-wrapped. Where the code does not do what a chapter’s topic would suggest, the chapter says so and shows the evidence. Those findings are collected at the end of Chapter 10.</p></div>
 
 </section>
@@ -893,24 +893,24 @@ usage: { spent: 0, reserved: 900, allowance: 1000 }</code></pre></div>
     inputSchema: z
       .object({
         url: z.string().url(),
-        estimatedCost: z.number().int().min(<span class="t-n">1</span>).max(<span class="t-n">100</span>).<span class="t-k">default</span>(<span class="t-n">10</span>),
+    maxKilobytes: z.number().int().min(<span class="t-n">1</span>).max(<span class="t-n">100</span>).<span class="t-k">default</span>(<span class="t-n">10</span>),
       })
       .strict(),
     annotations: { readOnlyHint: <span class="t-k">true</span> },
   },
-  ({ url, estimatedCost }) =&gt;
+    ({ url, maxKilobytes }) =&gt;
     guarded(
       <span class="t-s">'import_url'</span>,
       <span class="t-n">3</span>,
       <span class="t-k">async</span> (a) =&gt; {
         <span class="t-k">let</span> reservation = <span class="t-s">''</span>;
         <span class="t-k">try</span> {
-          reservation = <span class="t-k">await</span> production.budget.reserve(a, estimatedCost);
+          reservation = <span class="t-k">await</span> production.budget.reserve(a, maxKilobytes);
           <span class="t-c">// The estimate is also the size budget, in KB, so the work can never cost more than was reserved.</span>
           <span class="t-k">const</span> text = <span class="t-k">await</span> production.importer.fetch(
             url,
             <span class="t-k">undefined</span>,
-            Math.min(production.importer.maxBytes, estimatedCost * <span class="t-n">1000</span>),
+              Math.min(production.importer.maxBytes, maxKilobytes * <span class="t-n">1000</span>),
           );
           <span class="t-k">await</span> production.budget.reconcile(
             a,
@@ -937,7 +937,7 @@ usage: { spent: 0, reserved: 900, allowance: 1000 }</code></pre></div>
 );</code></pre>
   <p>Only <code>import_url</code> reserves anything. It estimates a cost (default 10, at most 100), does the fetch, then settles at <code>ceil(length / 1000)</code> or at zero if it failed. Every other tool costs nothing against the budget, which is a fair choice for cheap reads and a decision worth making deliberately rather than by omission.</p>
   <ul>
-    <li><strong>A reservation is a ceiling.</strong> <code>reconcile()</code> records the real cost on the reservation but charges at most what was reserved, and the work is bounded by the same number: <code>import_url</code> treats <code>estimatedCost</code> as a size budget in KB and stops fetching past it. So the work cannot cost more than was reserved, and a caller who lowballs the estimate only gets a smaller fetch. In the simulator, settle with an actual above the estimate and see the charge capped.</li>
+  <li><strong>A reservation is a ceiling.</strong> <code>reconcile()</code> records the real cost on the reservation but charges at most what was reserved. The tool calls the input <code>maxKilobytes</code> because the same number bounds both the reservation and the fetched body. A small value produces a smaller fetch rather than hidden overspend. In the simulator, settle with an actual above the reservation and see the charge capped.</li>
     <li><strong>Holds expire.</strong> A reservation lives five minutes. The next <code>reserve()</code> for the organisation sweeps expired holds and releases them, so a process that dies between <code>reserve()</code> and <code>reconcile()</code> no longer locks up allowance for ever. If the work did finish and settles late, its real cost is still recorded, without releasing the hold twice. Try <em>Let 6 minutes pass</em>.</li>
     <li><strong>Check, hold and record are one statement,</strong> so a crash cannot leave a hold with no reservation row for the sweeper to find.</li>
   </ul>
@@ -1021,9 +1021,9 @@ usage: { spent: 0, reserved: 900, allowance: 1000 }</code></pre></div>
     <ul class="log" id="ls-log"></ul>
     <p class="figcap">Every run starts the same way: the client sends <code>create_task</code>, the server does the work, and the response is lost on the way back. Then the client picks a strategy.</p></div></div>
 
-  <div class="tbl-wrap"><table><thead><tr><th scope="col">Strategy</th><th scope="col">Tasks that exist</th><th scope="col">Verdict</th></tr></thead><tbody><tr><th scope="row" class="lbl">Give up</th><td>1</td><td>The user believes it failed. It succeeded. The state is right and the belief is wrong.</td></tr><tr><th scope="row" class="lbl">Retry as a new call</th><td><strong>2</strong></td><td>A duplicate. This is what idempotency keys exist to prevent.</td></tr><tr><th scope="row" class="lbl">Retry, same key</th><td>1</td><td>The stored result comes back and the client learns the truth.</td></tr><tr><th scope="row" class="lbl">Same key, crash between write and record</th><td>1</td><td><code>OUTCOME_UNKNOWN</code>. The server refuses to claim it knows. Inspect first.</td></tr></tbody></table></div>
-  <p>The last row is the honest edge of the pattern, and 102 Chapter 02 has the code. A key protects you when the server survives long enough to record its result. When it does not, the correct answer is to <em>look</em> before acting: search for the task, then decide.</p>
-  <div class="callout ok"><span class="tag">Fixed in this repo</span><p><strong>A refused write no longer burns its key.</strong> If the work inside <code>once()</code> throws a well-understood error (a stale version, a missing approval), the claim is deleted and the same key can be used again. An earlier version kept the claim, so a retry was told <code>OUTCOME_UNKNOWN</code> although nothing had been written; MCP 102 Chapter 11 has the captured output. An error the code cannot classify, such as a dropped connection, still keeps the claim. So after an ambiguous <em>timeout</em>, retry with the same key, and after a clear refusal, correct the call and send it again.</p></div>
+  <div class="tbl-wrap"><table><thead><tr><th scope="col">Strategy</th><th scope="col">Tasks that exist</th><th scope="col">Verdict</th></tr></thead><tbody><tr><th scope="row" class="lbl">Give up</th><td>1</td><td>The user believes it failed. It succeeded. The state is right and the belief is wrong.</td></tr><tr><th scope="row" class="lbl">Retry as a new call</th><td><strong>2</strong></td><td>A duplicate. This is what idempotency keys exist to prevent.</td></tr><tr><th scope="row" class="lbl">Retry, same key</th><td>1</td><td>The stored result comes back and the client learns the truth.</td></tr><tr><th scope="row" class="lbl">Crash before transaction commit, then retry</th><td>1</td><td>The failed transaction leaves no task or claim. The retry commits one task and its result.</td></tr></tbody></table></div>
+  <p>The last row is why the operation claim and product write must share one transaction. A failure before commit rolls back both. A lost response after commit is also safe: retrying the same key returns the result that committed with the write.</p>
+  <div class="callout ok"><span class="tag">Fixed in this repo</span><p><strong>The idempotency boundary is now atomic.</strong> <code>once()</code> passes a database transaction into the product write. The claim, mutation, approval consumption, and result either commit together or all roll back. A concurrent duplicate can briefly receive retryable <code>OPERATION_IN_PROGRESS</code>; a later retry returns the committed result.</p></div>
   <p>Two rules cover most of what goes wrong in practice. <strong>Bound every retry by a deadline</strong>, not just an attempt count, so a slow dependency cannot hold a request for minutes. And <strong>never retry what you cannot classify</strong>: validation, permission and conflict failures fail the same way every time, and retrying them only adds load.</p>
 
 </section>
@@ -1175,7 +1175,7 @@ t+1100 call, dependency up    -&gt; served</code></pre></div>
   <p class="lede"><code>import_url</code> asks the server to fetch a web address on the caller’s behalf. That is a request to make your network reach somewhere you did not choose.</p>
 
   <p>This is <em>server-side request forgery</em>. The attack is simple. A caller who cannot reach your database, your cloud metadata service or an admin panel asks <em>you</em> to fetch a URL pointing at one, and you dutifully return what you find. The fetch runs inside your network, with your network’s trust. A URL fetcher is a doorway, and this class exists to guard it.</p>
-  <div class="panel" data-w="tabs"><div class="panel-hd"><h3 class="ph">Interactive · The importer</h3></div><div class="panel-bd"><section data-tab="validate()"><div class="cap"><b>src/production.ts</b><span>run on the first URL and on every redirect</span></div><pre class="code server" tabindex="0"><code><span class="t-k">async</span> validate(raw: string) {
+  <div class="panel" data-w="tabs"><div class="panel-hd"><h3 class="ph">Interactive · The importer</h3></div><div class="panel-bd"><section data-tab="validate()"><div class="cap"><b>src/production.ts</b><span>resolve once for each URL, then pin that address</span></div><pre class="code server" tabindex="0"><code><span class="t-k">async</span> validate(raw: string) {
   <span class="t-k">const</span> url = <span class="t-k">new</span> URL(raw);
   <span class="t-k">if</span> (url.protocol !== <span class="t-s">'https:'</span>)
     <span class="t-k">throw</span> <span class="t-k">new</span> Fault(<span class="t-s">'URL_REJECTED'</span>, <span class="t-s">'Only HTTPS URLs are allowed.'</span>);
@@ -1187,55 +1187,31 @@ t+1100 call, dependency up    -&gt; served</code></pre></div>
       <span class="t-s">'URL_REJECTED'</span>,
       <span class="t-s">'The URL resolves to a private or local network.'</span>,
     );
-  <span class="t-k">return</span> url;
-}</code></pre><p class="figcap">HTTPS only; no <code>user:pass@</code>; resolve the name to <em>all</em> its addresses; reject if <em>any</em> is private. A name that resolves to one public and one private address is refused.</p></section><section data-tab="fetch()"><div class="cap"><b>src/production.ts</b><span>redirects by hand, bounded bytes, a deadline</span></div><pre class="code server" tabindex="0"><code><span class="t-k">async</span> fetch(
+  <span class="t-k">const</span> chosen = answers[<span class="t-n">0</span>];
+  <span class="t-k">return</span> { url, address: chosen.address, family: chosen.family };
+}</code></pre><p class="figcap">HTTPS only; no <code>user:pass@</code>; resolve the name to <em>all</em> its addresses; reject if <em>any</em> is private. The returned address is the one used for the TLS connection, closing the DNS-rebinding gap.</p></section><section data-tab="fetch()"><div class="cap"><b>src/production.ts</b><span>pinned connection, redirects by hand, bounded bytes</span></div><pre class="code server" tabindex="0"><code><span class="t-k">async</span> fetch(
   raw: string,
   signal = AbortSignal.timeout(<span class="t-n">5000</span>),
   maxBytes = <span class="t-k">this</span>.maxBytes,
 ) {
-  <span class="t-k">let</span> url = <span class="t-k">await</span> <span class="t-k">this</span>.validate(raw);
+  <span class="t-k">let</span> target = <span class="t-k">await</span> <span class="t-k">this</span>.validate(raw);
   <span class="t-k">for</span> (<span class="t-k">let</span> n = <span class="t-n">0</span>; n &lt;= <span class="t-k">this</span>.maxRedirects; n++) {
-    <span class="t-k">const</span> r = <span class="t-k">await</span> fetch(url, {
-      redirect: <span class="t-s">'manual'</span>,
-      signal,
-      headers: { Accept: <span class="t-s">'text/html,text/plain'</span> },
-    });
+    <span class="t-k">const</span> r = <span class="t-k">await</span> <span class="t-k">this</span>.request(target, signal, maxBytes);
     <span class="t-k">if</span> (r.status &gt;= <span class="t-n">300</span> &amp;&amp; r.status &lt; <span class="t-n">400</span>) {
-      <span class="t-k">const</span> next = r.headers.get(<span class="t-s">'location'</span>);
+      <span class="t-k">const</span> next = r.headers.location;
       <span class="t-k">if</span> (!next || n === <span class="t-k">this</span>.maxRedirects)
         <span class="t-k">throw</span> <span class="t-k">new</span> Fault(<span class="t-s">'URL_REJECTED'</span>, <span class="t-s">'Redirect chain is invalid or too long.'</span>);
-      url = <span class="t-k">await</span> <span class="t-k">this</span>.validate(<span class="t-k">new</span> URL(next, url).href);
+      target = <span class="t-k">await</span> <span class="t-k">this</span>.validate(<span class="t-k">new</span> URL(next, target.url).href);
       <span class="t-k">continue</span>;
     }
-    <span class="t-k">if</span> (!r.ok)
+    <span class="t-k">if</span> (r.status &lt; <span class="t-n">200</span> || r.status &gt;= <span class="t-n">300</span>)
       <span class="t-k">throw</span> <span class="t-k">new</span> Fault(
         <span class="t-s">'IMPORT_FAILED'</span>,
         <span class="t-s">`Remote server returned HTTP ${r.status}.`</span>,
         <span class="t-n">502</span>,
         r.status &gt;= <span class="t-n">500</span>,
       );
-    <span class="t-k">const</span> length = Number(r.headers.get(<span class="t-s">'content-length'</span>) ?? <span class="t-n">0</span>);
-    <span class="t-k">if</span> (length &gt; maxBytes)
-      <span class="t-k">throw</span> <span class="t-k">new</span> Fault(<span class="t-s">'TOO_LARGE'</span>, <span class="t-s">'Remote content exceeds the import limit.'</span>, <span class="t-n">413</span>);
-    <span class="t-k">const</span> reader = r.body?.getReader();
-    <span class="t-k">let</span> size = <span class="t-n">0</span>,
-      text = <span class="t-s">''</span>;
-    <span class="t-k">const</span> decoder = <span class="t-k">new</span> TextDecoder();
-    <span class="t-k">while</span> (reader) {
-      <span class="t-k">const</span> part = <span class="t-k">await</span> reader.read();
-      <span class="t-k">if</span> (part.done) <span class="t-k">break</span>;
-      size += part.value.length;
-      <span class="t-k">if</span> (size &gt; maxBytes) {
-        <span class="t-k">await</span> reader.cancel();
-        <span class="t-k">throw</span> <span class="t-k">new</span> Fault(
-          <span class="t-s">'TOO_LARGE'</span>,
-          <span class="t-s">'Remote content exceeds the import limit.'</span>,
-          <span class="t-n">413</span>,
-        );
-      }
-      text += decoder.decode(part.value, { stream: <span class="t-k">true</span> });
-    }
-    <span class="t-k">return</span> text
+    <span class="t-k">return</span> r.text
       .replace(/&lt;script[\s\S]*?&lt;\/script&gt;/gi, <span class="t-s">''</span>)
       .replace(/&lt;style[\s\S]*?&lt;\/style&gt;/gi, <span class="t-s">''</span>)
       .replace(/&lt;[^&gt;]+&gt;/g, <span class="t-s">' '</span>)
@@ -1243,7 +1219,7 @@ t+1100 call, dependency up    -&gt; served</code></pre></div>
       .trim();
   }
   <span class="t-k">throw</span> <span class="t-k">new</span> Fault(<span class="t-s">'IMPORT_FAILED'</span>, <span class="t-s">'Import did not complete.'</span>, <span class="t-n">502</span>);
-}</code></pre><p class="figcap"><code>redirect: 'manual'</code> means every hop is re-validated. Bytes are counted as they stream, not trusted from a header. Scripts, styles and tags are stripped.</p></section><section data-tab="privateAddress()"><div class="cap"><b>src/production.ts</b><span>numeric ranges, and IPv6 as an allow-list</span></div><pre class="code server" tabindex="0"><code><span class="t-k">function</span> unmapIpv4(raw: string) {
+}</code></pre><p class="figcap"><code>pinnedHttpsGet()</code> supplies a custom DNS lookup that returns the validated address while preserving the hostname for TLS certificate checks. Every redirect is resolved, checked, and pinned again. The request helper enforces the media type and byte limit while streaming.</p></section><section data-tab="privateAddress()"><div class="cap"><b>src/production.ts</b><span>numeric ranges, and IPv6 as an allow-list</span></div><pre class="code server" tabindex="0"><code><span class="t-k">function</span> unmapIpv4(raw: string) {
   <span class="t-k">const</span> ip = raw.toLowerCase().split(<span class="t-s">'%'</span>)[<span class="t-n">0</span>];
   <span class="t-k">const</span> dotted = /^::(?:ffff:)?(\d+\.\d+\.\d+\.\d+)$/.exec(ip);
   <span class="t-k">if</span> (dotted) <span class="t-k">return</span> dotted[<span class="t-n">1</span>];
@@ -1313,7 +1289,7 @@ t+1100 call, dependency up    -&gt; served</code></pre></div>
 
   <h3>What no address check can fix</h3>
   <ul>
-    <li><strong>The name is resolved twice.</strong> <code>validate()</code> looks the hostname up, and then <code>fetch()</code> resolves it again on its own. Between the two, a hostile DNS server can change its answer (<em>DNS rebinding</em>), so the address that was checked is not the address that is connected to. The deployment notes in the repo say as much: check the connected IP, or route through an egress proxy that does.</li>
+  <li><strong>The validated address is pinned.</strong> <code>validate()</code> resolves and checks every answer, then the HTTPS request connects through that chosen address while retaining the hostname for SNI and certificate validation. Redirects repeat the same process. This prevents a second DNS answer from changing the destination after validation.</li>
     <li><strong>Ports are not restricted.</strong> <code>https://example.test:8443/x</code> validates. That is fine for a public host, and one more reason the network layer matters.</li>
     <li><strong>Stripping tags does not make content safe.</strong> The tool returns the text with <code>trust: "untrusted_external_content"</code> and never publishes it. That label is for the <em>host</em>. A web page can contain sentences addressed to a model (&ldquo;ignore your instructions and…&rdquo;), and removing HTML does not remove them.</li>
   </ul>
@@ -1475,7 +1451,7 @@ t+1100 call, dependency up    -&gt; served</code></pre></div>
   "traceId": "cc49deff-b46c-4ef3-8195-e041291e62fc"
 }</code></pre></div>
   <p>This is Chapter 01’s lesson in miniature: role and plan are separate questions, and a new write path has to ask both. The test <code>a viewer cannot queue a job, and a member on the free plan gets PLAN_REQUIRED</code> pins it.</p>
-  <p>The protocol has a standard shape for this. The SDK’s type definitions include <code>tasks/get</code>, <code>tasks/result</code>, <code>tasks/cancel</code> and <code>tasks/list</code> methods, which standardise how a client polls a long-running call. This repository does not use them; it implements the pattern with its own tools and table. That is a legitimate first step, and adopting the protocol’s methods later means clients can poll without knowing your tool names. The database still owns durability either way.</p>
+  <p>The optional MCP Tasks extension standardises this lifecycle with <code>tasks/get</code>, <code>tasks/update</code>, and <code>tasks/cancel</code>. It does not define <code>tasks/list</code> or a separate <code>tasks/result</code> method. This repository deliberately implements the application pattern with its own tools and table; adopting the extension later would give compatible clients a standard polling contract. The database or queue still owns durability either way.</p>
 
 </section>
 
@@ -1604,9 +1580,9 @@ g: HOP_LIMIT</code></pre></div>
     [id(), a.id, a.org, operation, outcome, traceId],
   );
 }</code></pre>
-  <p>No arguments, no page bodies, no tokens, no scraped content. That is deliberate. Logs are copied to more places than databases are, kept longer, and read by more people, so anything in them is effectively public inside your company. If an argument was sensitive it should never have been written, and the ones that are not sensitive can be recovered from the trace id.</p>
+  <p>The endpoint that returns these rows is restricted to organisation administrators; ordinary members receive <code>FORBIDDEN</code>. No arguments, no page bodies, no tokens, no scraped content. That is deliberate. Logs are copied to more places than databases are, kept longer, and read by more people, so anything in them is effectively public inside your company. If an argument was sensitive it should never have been written, and the ones that are not sensitive can be recovered from the trace id.</p>
   <p>The trace id is the thread that ties things together. It is generated per call in <code>execute()</code>, returned in the error the caller sees, and written to the audit row, so a user’s screenshot of an error leads straight to the record of it. Here is the real operations endpoint after a few job calls (one of them refused), from the live server:</p>
-  <div class="fr"><p class="frame-tag from-server">GET /api/ops as alice · captured (the newest audit rows, including the job calls)</p><pre class="frame-json from-server" tabindex="0"><code>{
+  <div class="fr"><p class="frame-tag from-server">GET /api/ops as alice (organisation admin) · representative response</p><pre class="frame-json from-server" tabindex="0"><code>{
   <span class="t-p">"usage"</span>: {
     <span class="t-p">"spent"</span>: <span class="t-n">0</span>,
     <span class="t-p">"reserved"</span>: <span class="t-n">0</span>,
@@ -1646,7 +1622,7 @@ g: HOP_LIMIT</code></pre></div>
     </fieldset>
     <div class="readout"><div><small>Time series</small><strong id="lb-n">—</strong></div><div><small>Verdict</small><strong id="lb-v" style="font-size:16px">—</strong></div></div>
     <p class="figcap">Series = the product of every selected label’s distinct values. Task id and search text are assumed at one million and ten million distinct values. Per-tenant and per-user detail belongs in logs and traces, where one row per event is normal.</p></div></div>
-  <div class="callout ok"><span class="tag">Fixed in this repo</span><p><strong>Every tool leaves an audit row.</strong> Audit used to be written in <code>execute()</code> and in <code>import_url</code> only, so <code>start_release_job</code> and <code>get_job</code> wrote nothing, and neither did <code>explain_route</code> in MCP 104. For a system whose job is to say who did what, the jobs path is the one that spends real money in the background. All of them now go through <code>guarded()</code> (Chapter 00), so a new tool cannot forget. One gap remains by design: a call the SDK rejects at the schema stage never reaches the handler, so it leaves no row (102 Chapter 02).</p></div>
+  <div class="callout ok"><span class="tag">Fixed in this repo</span><p><strong>Every handled tool call leaves an audit row.</strong> Audit used to be written in <code>execute()</code> and in <code>import_url</code> only, so <code>start_release_job</code> and <code>get_job</code> wrote nothing, and neither did <code>explain_route</code> in MCP 104. For a system whose job is to say who did what, the jobs path is the one that spends real money in the background. All of them now go through <code>guarded()</code> (Chapter 00), so a new tool cannot forget. A call the SDK rejects at the schema stage never reaches the product handler, so it belongs in edge/protocol telemetry rather than the product-action audit (102 Chapter 02).</p></div>
   <p>Two small details in the endpoint itself. The audit query is scoped by <code>org</code> only, so any authenticated user sees their whole organisation’s recent rows (twelve, newest first). That is reasonable for an operations panel and worth restricting to admins in a real product. And rate-limited calls are audited as <code>throttled</code>, not <code>failure</code>, so an alert on the failure rate does not page during a legitimate burst of throttling.</p>
 
 </section>
@@ -1780,8 +1756,8 @@ CMD [<span class="t-s">"npm"</span>, <span class="t-s">"start"</span>]</code></p
   <div class="callout"><span class="tag">Why list gaps</span><p>A teaching repository is allowed to be incomplete. What it must not do is let the reader assume the missing parts are there. The point of this chapter is the skill underneath: reading a deployment sketch and asking, for each requirement, &ldquo;where in these files is that?&rdquo;.</p></div>
 
   <h3>Findings, in one place</h3>
-  <div class="tbl-wrap"><table><thead><tr><th scope="col">Where</th><th scope="col">What was found</th><th scope="col">Status</th><th scope="col">Chapter</th></tr></thead><tbody><tr><th scope="row" class="lbl">Tools</th><td>The job tools bypassed the limiter, the audit trail and the structured error shape</td><td><span class="chip ok">fixed</span></td><td>00, 01, 09</td></tr><tr><th scope="row" class="lbl"><code>Jobs</code></th><td>A viewer could queue jobs: the plan was checked, the role was not</td><td><span class="chip ok">fixed</span></td><td>07</td></tr><tr><th scope="row" class="lbl"><code>Jobs</code></th><td>No consumer, and attempts were unbounded; the lease owner was not checked on completion</td><td><span class="chip ok">fixed</span></td><td>07</td></tr><tr><th scope="row" class="lbl"><code>SafeImporter</code></th><td>IPv4-mapped IPv6, <code>::</code> and <code>100.64.0.0/10</code> passed the address check</td><td><span class="chip ok">fixed</span></td><td>06</td></tr><tr><th scope="row" class="lbl"><code>FairLimiter</code></th><td>In-process bucket multiplied by the replica count; one member could hold every slot</td><td><span class="chip ok">fixed</span></td><td>02</td></tr><tr><th scope="row" class="lbl"><code>Budget</code></th><td>Actual cost could exceed the estimate; holds never expired</td><td><span class="chip ok">fixed</span></td><td>03</td></tr><tr><th scope="row" class="lbl"><code>CircuitBreaker</code></th><td>Defined, untested, unused</td><td><span class="chip ok">fixed</span></td><td>05</td></tr><tr><th scope="row" class="lbl"><code>nextHop</code></th><td>Not attached to any tool</td><td><span class="chip ok">fixed</span></td><td>08</td></tr><tr><th scope="row" class="lbl">Deployment</th><td>No health route; demo data seeded in production; secret and origin not required; AWS template used the wrong shape for its environment lists</td><td><span class="chip ok">fixed</span></td><td>10</td></tr><tr><th scope="row" class="lbl"><code>SafeImporter</code></th><td>The name is resolved twice, so DNS can change between the check and the connection</td><td><span class="chip warn">open</span></td><td>06</td></tr><tr><th scope="row" class="lbl">Deployment</th><td>The Dockerfile and template are written but not built, linted or deployed</td><td><span class="chip warn">open</span></td><td>10</td></tr><tr><th scope="row" class="lbl">Identity</th><td>A real provider and real member provisioning are yours to add</td><td><span class="chip warn">open</span></td><td>10</td></tr></tbody></table></div>
-  <p>MCP 102’s fixes (the 401 challenge, the released operation key, the resource not-found error and the wired-in breaker) apply here as well, because this repository shares that code. What is left is short. The name is still resolved twice in the URL importer, so keep an egress proxy or network policy in front of it. A real identity provider and member provisioning are yours to add. And the Dockerfile and the template need a first build and a first deploy, with <code>cfn-lint</code>, before you trust them.</p>
+  <div class="tbl-wrap"><table><thead><tr><th scope="col">Where</th><th scope="col">What was found</th><th scope="col">Status</th><th scope="col">Chapter</th></tr></thead><tbody><tr><th scope="row" class="lbl">Tools</th><td>The job tools bypassed the limiter, the audit trail and the structured error shape</td><td><span class="chip ok">fixed</span></td><td>00, 01, 09</td></tr><tr><th scope="row" class="lbl"><code>Jobs</code></th><td>A viewer could queue jobs: the plan was checked, the role was not</td><td><span class="chip ok">fixed</span></td><td>07</td></tr><tr><th scope="row" class="lbl"><code>Jobs</code></th><td>No consumer, and attempts were unbounded; the lease owner was not checked on completion</td><td><span class="chip ok">fixed</span></td><td>07</td></tr><tr><th scope="row" class="lbl"><code>SafeImporter</code></th><td>IPv4-mapped IPv6, <code>::</code> and <code>100.64.0.0/10</code> passed the address check</td><td><span class="chip ok">fixed</span></td><td>06</td></tr><tr><th scope="row" class="lbl"><code>FairLimiter</code></th><td>In-process bucket multiplied by the replica count; one member could hold every slot</td><td><span class="chip ok">fixed</span></td><td>02</td></tr><tr><th scope="row" class="lbl"><code>Budget</code></th><td>Actual cost could exceed the estimate; holds never expired</td><td><span class="chip ok">fixed</span></td><td>03</td></tr><tr><th scope="row" class="lbl"><code>CircuitBreaker</code></th><td>Defined, untested, unused</td><td><span class="chip ok">fixed</span></td><td>05</td></tr><tr><th scope="row" class="lbl"><code>nextHop</code></th><td>Not attached to any tool</td><td><span class="chip ok">fixed</span></td><td>08</td></tr><tr><th scope="row" class="lbl">Deployment</th><td>No health route; demo data seeded in production; secret and origin not required; AWS template used the wrong shape for its environment lists</td><td><span class="chip ok">fixed</span></td><td>10</td></tr><tr><th scope="row" class="lbl"><code>SafeImporter</code></th><td>DNS was resolved once for validation and again for the connection</td><td><span class="chip ok">fixed: checked address pinned</span></td><td>06</td></tr><tr><th scope="row" class="lbl">Deployment</th><td>The Dockerfile and template are written but not built, linted or deployed</td><td><span class="chip warn">open</span></td><td>10</td></tr><tr><th scope="row" class="lbl">Identity</th><td>A real provider and real member provisioning are yours to add</td><td><span class="chip warn">open</span></td><td>10</td></tr></tbody></table></div>
+  <p>MCP 102’s fixes apply here as well, including the 401 challenge, resource-bound token audience, transactional operation key, resource not-found error and wired-in breaker. The URL importer now pins its validated address; an egress proxy or network policy remains useful defence in depth. A real identity provider and member provisioning are still yours to add. The Dockerfile and template also need a first build, lint and deployment in the target account before you trust them.</p>
 
 </section>
 
@@ -1791,7 +1767,7 @@ CMD [<span class="t-s">"npm"</span>, <span class="t-s">"start"</span>]</code></p
   <h2>Check yourself</h2>
   <p class="lede">Eight questions. As before, the explanations are the point.</p>
 
-  <div class="panel" data-w="quiz" data-src="qz-103"><div class="panel-hd"><h3 class="ph">Interactive · Knowledge check</h3><div class="qz-tools"><span class="qz-score" aria-live="polite">0 / 8</span><button class="btn ghost qz-reset" type="button">Start over</button></div></div><div class="panel-bd qz-body"></div><script type="application/json" id="qz-103">[{"q":"A viewer on the Pro plan asks to create a task. Which check fails?","o":["The plan entitlement","The role check","The tenant scope"],"a":1,"w":"Role answers what a person may do to the data; plan answers what the customer bought. A viewer is refused by \u003ccode>writeAllowed()\u003c/code> with \u003ccode>FORBIDDEN\u003c/code>, whatever plan they are on."},{"q":"An organisation may run three calls at once and one member at most two. Alice already has two running. She starts a third, then Bob starts one. What happens?","o":["Both are refused","Alice’s third is refused and Bob is admitted","Both are admitted"],"a":1,"w":"The per-member cap stops one user taking every slot, so a colleague can always get in. The organisation cap is what protects the process from a whole tenant."},{"q":"Why does \u003ccode>guarded()\u003c/code> call \u003ccode>leave()\u003c/code> inside a \u003ccode>finally\u003c/code> block?","o":["To log the call","So the slot is returned on every path, including errors","To speed up the next request"],"a":1,"w":"A permit that is not returned is a slot lost until restart. Every acquire needs exactly one release on every path."},{"q":"Three concurrent reservations of 600, 600 and 300 hit an allowance of 1000. What is the outcome, and why is it safe?","o":["All three succeed; the database is big enough","Two succeed and one is refused, because check and increment are one conditional UPDATE","One succeeds; the rest queue"],"a":1,"w":"The condition and the increment are the same statement, so no two calls can both take the last unit. A read followed by a write would have the race."},{"q":"A write times out and you cannot tell whether it happened. What is the safe retry?","o":["Retry with a brand-new operation key","Retry with the same operation key","Never retry writes"],"a":1,"w":"The same key returns the stored result if the work completed. A new key would create a duplicate. (If the server crashed mid-way you get \u003ccode>OUTCOME_UNKNOWN\u003c/code> and must inspect first.)"},{"q":"A URL check tests whether an address starts with \u003ccode>127.\u003c/code> or \u003ccode>169.254.\u003c/code>. Which address slips through?","o":["127.0.0.1","::ffff:169.254.169.254","10.1.2.3"],"a":1,"w":"IPv4-mapped IPv6 looks like an IPv6 string but means the IPv4 address. Prefix matching on text misses it; parse the address, unwrap the mapping, then compare ranges."},{"q":"A worker leases a job and crashes. What happens next in this design?","o":["The job is lost","After the lease expires another worker can lease it, so it may run twice","The job is marked failed immediately"],"a":1,"w":"A lease is a timed claim, so crashes need no detection. The trade is at-least-once delivery, so the work must tolerate repeats, and a job that keeps crashing its worker is dead-lettered once its attempts run out."},{"q":"You add \u003ccode>task_id\u003c/code> as a metric label. What is the likely consequence?","o":["Nothing; labels are free","A series per task, so storage and cost grow without bound","Faster queries"],"a":1,"w":"Every distinct label value creates another time series. Unbounded identifiers belong in logs and traces, not metric labels."}]</script></div>
+  <div class="panel" data-w="quiz" data-src="qz-103"><div class="panel-hd"><h3 class="ph">Interactive · Knowledge check</h3><div class="qz-tools"><span class="qz-score" aria-live="polite">0 / 8</span><button class="btn ghost qz-reset" type="button">Start over</button></div></div><div class="panel-bd qz-body"></div><script type="application/json" id="qz-103">[{"q":"A viewer on the Pro plan asks to create a task. Which check fails?","o":["The plan entitlement","The role check","The tenant scope"],"a":1,"w":"Role answers what a person may do to the data; plan answers what the customer bought. A viewer is refused by \u003ccode>writeAllowed()\u003c/code> with \u003ccode>FORBIDDEN\u003c/code>, whatever plan they are on."},{"q":"An organisation may run three calls at once and one member at most two. Alice already has two running. She starts a third, then Bob starts one. What happens?","o":["Both are refused","Alice’s third is refused and Bob is admitted","Both are admitted"],"a":1,"w":"The per-member cap stops one user taking every slot, so a colleague can always get in. The organisation cap is what protects the process from a whole tenant."},{"q":"Why does \u003ccode>guarded()\u003c/code> call \u003ccode>leave()\u003c/code> inside a \u003ccode>finally\u003c/code> block?","o":["To log the call","So the slot is returned on every path, including errors","To speed up the next request"],"a":1,"w":"A permit that is not returned is a slot lost until restart. Every acquire needs exactly one release on every path."},{"q":"Three concurrent reservations of 600, 600 and 300 hit an allowance of 1000. What is the outcome, and why is it safe?","o":["All three succeed; the database is big enough","Two succeed and one is refused, because check and increment are one conditional UPDATE","One succeeds; the rest queue"],"a":1,"w":"The condition and the increment are the same statement, so no two calls can both take the last unit. A read followed by a write would have the race."},{"q":"A write times out and you cannot tell whether it happened. What is the safe retry?","o":["Retry with a brand-new operation key","Retry with the same operation key","Never retry writes"],"a":1,"w":"The same key returns the stored result if the work completed. A new key would create a duplicate. A crash before commit rolls back both the write and claim; a lost response after commit is replayed."},{"q":"A URL check tests whether an address starts with \u003ccode>127.\u003c/code> or \u003ccode>169.254.\u003c/code>. Which address slips through?","o":["127.0.0.1","::ffff:169.254.169.254","10.1.2.3"],"a":1,"w":"IPv4-mapped IPv6 looks like an IPv6 string but means the IPv4 address. Prefix matching on text misses it; parse the address, unwrap the mapping, then compare ranges."},{"q":"A worker leases a job and crashes. What happens next in this design?","o":["The job is lost","After the lease expires another worker can lease it, so it may run twice","The job is marked failed immediately"],"a":1,"w":"A lease is a timed claim, so crashes need no detection. The trade is at-least-once delivery, so the work must tolerate repeats, and a job that keeps crashing its worker is dead-lettered once its attempts run out."},{"q":"You add \u003ccode>task_id\u003c/code> as a metric label. What is the likely consequence?","o":["Nothing; labels are free","A series per task, so storage and cost grow without bound","Faster queries"],"a":1,"w":"Every distinct label value creates another time series. Unbounded identifiers belong in logs and traces, not metric labels."}]</script></div>
   <p>Missed one? The chapter is named in the explanation’s topic: limits in 02, budgets in 03, retries in 04, URL import in 06, jobs in 07, metrics in 09.</p>
 
 </section>
@@ -2013,13 +1989,13 @@ function logAdd(ul, t, cls, label, text) { var li = document.createElement("li")
       var s = b.getAttribute("data-s"), ul = $("#ls-log"), v = $("#ls-verdict"); ul.innerHTML = "";
       var add = function (t, cls, l, x) { var li = document.createElement("li"); li.innerHTML = '<span class="t">' + t + '</span><span class="chip ' + cls + '">' + esc(l) + "</span> " + esc(x); ul.appendChild(li); };
       add("1", "info", "client", 'create_task { title: "Write notes", operationKey: "K1" }');
-      if (s === "crash") add("2", "warn", "server", "inserted task-4, then the process died before recording the result");
+      if (s === "crash") add("2", "warn", "server", "the process died before the database transaction committed");
       else add("2", "ok", "server", "inserted task-4 and recorded the result against K1");
       add("3", "warn", "network", "the response is lost. The client sees a timeout.");
       if (s === "giveup") { add("4", "info", "client", "gives up and tells the user it failed"); say(v, "warn", "1 task exists", "But the user was told it failed. The state is fine and the belief is wrong."); }
       if (s === "newkey") { add("4", "info", "client", 'retries as a new call, operationKey "K2"'); add("5", "no", "server", "K2 is new, so it inserts task-5"); say(v, "no", "2 tasks exist", "A duplicate. Nothing could tell these calls were the same intent."); }
       if (s === "samekey") { add("4", "info", "client", 'retries with the same key "K1"'); add("5", "ok", "server", "K1 found, same fingerprint: returns the stored result task-4"); say(v, "ok", "1 task exists", "The client learns the truth and nothing is duplicated."); }
-      if (s === "crash") { add("4", "info", "client", 'retries with the same key "K1"'); add("5", "no", "server", "K1 is claimed but has no result: OUTCOME_UNKNOWN"); add("6", "info", "client", 'searches for "Write notes": finds task-4, treats the work as done'); say(v, "ok", "inspect, then decide", "The server refused to guess. Looking was cheap and correct."); }
+      if (s === "crash") { add("4", "info", "client", 'retries with the same key "K1"'); add("5", "ok", "server", "the rolled-back key is free; task-4 and its result commit together"); say(v, "ok", "1 task exists", "The transaction removed the crash gap, so the retry is safe."); }
     });
   });
 })();
