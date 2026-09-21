@@ -243,7 +243,7 @@ details.acc[open] summary::before{content:"– "}
 details.acc p{margin:10px 0 0;max-width:64ch;color:var(--ink-2)}
 
 @media (max-width:860px){
-  .split{grid-template-columns:1fr;gap:0}
+  .split{grid-template-columns:minmax(0,1fr);gap:0}
   .rail{position:static;margin-bottom:34px;border:1px solid var(--rule);background:var(--paper-2);padding:14px}
   .rail-inner{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:2px}
   .rail .grp{grid-column:1/-1;margin:10px 0 2px}
@@ -359,8 +359,9 @@ pre:focus-visible{outline:2px solid var(--host);outline-offset:1px}
 
 /* ---------- simulators ---------- */
 .fields{display:flex;flex-wrap:wrap;gap:12px 18px;align-items:flex-end;margin-bottom:16px}
-.field{display:flex;flex-direction:column;gap:4px;font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--ink-2)}
+.field{max-width:100%;min-width:0;display:flex;flex-direction:column;gap:4px;font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--ink-2)}
 .field input[type=text],.field input[type=number],.field select{font-family:var(--mono);font-size:13px;padding:6px 8px;border:1px solid var(--ink-3);background:var(--paper-2);color:var(--ink);border-radius:2px;min-width:140px}
+.field select{max-width:100%}
 .field input[type=range]{accent-color:var(--host);width:190px}
 .field output{color:var(--ink);font-weight:600}
 .readout{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule);margin:14px 0}
@@ -561,7 +562,9 @@ figure{margin:0}
 ✔ idempotency returns same result and rejects changed arguments
 ✔ optimistic version rejects stale write
 ✔ approval is actor and exact-operation bound and single use
+✔ operations data is admin-only and expired operational rows are removed
 ✔ the address check refuses internal space, including IPv4-mapped IPv6 and shared space
+✔ URL import pins the validated address for the TLS connection
 ✔ a viewer cannot queue a job, and a member on the free plan gets PLAN_REQUIRED
 ✔ job tools use the same pipeline: a structured error and an audit row
 ✔ a successful job call is audited too
@@ -572,6 +575,7 @@ figure{margin:0}
 ✔ publishing without an approval does not burn the operation key
 ✔ a failed transaction rolls back both the write and its claim
 ✔ a completed operation is replayed and its work is not run twice
+✔ an operation key stops replaying once the seven-day sweep has removed it
 ✔ MCP discovery, tool call and resource read work end to end
 ✔ a reservation that is never settled expires and frees its hold
 ✔ a reservation is a ceiling: settlement never charges more than was reserved
@@ -589,8 +593,8 @@ figure{margin:0}
 ✔ URL validation blocks private networks
 ✔ composite hop prevents cycles, excess depth and budget overrun
 ✔ a refused resource read is a structured not-found, the same as a page that does not exist
-ℹ tests 35
-ℹ pass 35
+ℹ tests 38
+ℹ pass 38
 ℹ fail 0</code></pre></div>
   <p>The suite checks each control on its own with a fake clock or injected dependency, then drives the controls through the MCP server together. Run it for the current count and result.</p>
   <div class="callout"><span class="tag">How to read this course</span><p>The same conventions as 102. <em>Captured run</em> blocks and every JSON-RPC frame come from running this repository, and excerpts are pulled from the source and re-wrapped. Where the code does not do what a chapter’s topic would suggest, the chapter says so and shows the evidence. Those findings are collected at the end of Chapter 10.</p></div>
@@ -889,7 +893,7 @@ usage: { spent: 0, reserved: 900, allowance: 1000 }</code></pre></div>
   <span class="t-s">'import_url'</span>,
   {
     description:
-      <span class="t-s">'Fetch bounded public HTTPS content for review. Returned text remains untrusted and is never published automatically.'</span>,
+      <span class="t-s">'Fetch up to maxKilobytes of public HTTPS text for review. The same value reserves budget units; returned text remains untrusted and is never published automatically.'</span>,
     inputSchema: z
       .object({
         url: z.string().url(),
@@ -1024,6 +1028,7 @@ usage: { spent: 0, reserved: 900, allowance: 1000 }</code></pre></div>
   <div class="tbl-wrap"><table><thead><tr><th scope="col">Strategy</th><th scope="col">Tasks that exist</th><th scope="col">Verdict</th></tr></thead><tbody><tr><th scope="row" class="lbl">Give up</th><td>1</td><td>The user believes it failed. It succeeded. The state is right and the belief is wrong.</td></tr><tr><th scope="row" class="lbl">Retry as a new call</th><td><strong>2</strong></td><td>A duplicate. This is what idempotency keys exist to prevent.</td></tr><tr><th scope="row" class="lbl">Retry, same key</th><td>1</td><td>The stored result comes back and the client learns the truth.</td></tr><tr><th scope="row" class="lbl">Crash before transaction commit, then retry</th><td>1</td><td>The failed transaction leaves no task or claim. The retry commits one task and its result.</td></tr></tbody></table></div>
   <p>The last row is why the operation claim and product write must share one transaction. A failure before commit rolls back both. A lost response after commit is also safe: retrying the same key returns the result that committed with the write.</p>
   <div class="callout ok"><span class="tag">Fixed in this repo</span><p><strong>The idempotency boundary is now atomic.</strong> <code>once()</code> passes a database transaction into the product write. The claim, mutation, approval consumption, and result either commit together or all roll back. A concurrent duplicate can briefly receive retryable <code>OPERATION_IN_PROGRESS</code>; a later retry returns the committed result.</p></div>
+  <div class="callout"><span class="tag">An operation key does not last forever</span><p>The stored result is what makes a retry safe, so how long it is kept is part of the contract. A maintenance sweep, <code>cleanupOperationalData()</code> in <code>src/db.ts</code>, deletes operation records <strong>seven days</strong> after they were created. It also removes audit rows after thirty days, rate-limit rows after one day, settled or expired budget holds a day after they expire, and approvals and jobs once they have expired. A retry with the same key inside the seven days is replayed. A retry after them is a brand-new operation, and the write runs again. The test <code>an operation key stops replaying once the seven-day sweep has removed it</code> checks both sides of that line. So a client must give up on a write long before a week has gone by, and must not hold an old key to retry with.</p></div>
   <p>Two rules cover most of what goes wrong in practice. <strong>Bound every retry by a deadline</strong>, not just an attempt count, so a slow dependency cannot hold a request for minutes. And <strong>never retry what you cannot classify</strong>: validation, permission and conflict failures fail the same way every time, and retrying them only adds load.</p>
 
 </section>
@@ -1188,7 +1193,7 @@ t+1100 call, dependency up    -&gt; served</code></pre></div>
       <span class="t-s">'The URL resolves to a private or local network.'</span>,
     );
   <span class="t-k">const</span> chosen = answers[<span class="t-n">0</span>];
-  <span class="t-k">return</span> { url, address: chosen.address, family: chosen.family };
+  <span class="t-k">return</span> { url, address: chosen.address, family: chosen.family <span class="t-k">as</span> 4|6 };
 }</code></pre><p class="figcap">HTTPS only; no <code>user:pass@</code>; resolve the name to <em>all</em> its addresses; reject if <em>any</em> is private. The returned address is the one used for the TLS connection, closing the DNS-rebinding gap.</p></section><section data-tab="fetch()"><div class="cap"><b>src/production.ts</b><span>pinned connection, redirects by hand, bounded bytes</span></div><pre class="code server" tabindex="0"><code><span class="t-k">async</span> fetch(
   raw: string,
   signal = AbortSignal.timeout(<span class="t-n">5000</span>),
