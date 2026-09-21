@@ -1,0 +1,15 @@
+Chapter ten. Deployment.
+
+The teaching setup runs on one laptop with an embedded database. Here is what the repo gives you for the move, and an honest list of what it does not.
+
+The default path uses PGlite, so the dev script works with nothing installed. Three files support a real deployment: a Compose file that runs the app against genuine Postgres sixteen, a CloudFormation template for an AWS container service, and a readme file that lists the surrounding pieces. Read them as a sketch, not a runbook. The Compose app is a development container, not a production image. The template creates the service and its roles, and the database and secrets are passed in. And the Dockerfile has not been built, because there was no Docker daemon where it was written.
+
+The design ideas are sound, and worth stating as rules. Migrations run before traffic, as a separate step, and every statement is safe to rerun. Secrets stay out of images. Health checks gate readiness. Shutdown drains: close the server, then the product APIs, then the database. And workers tolerate duplicates, because leases guarantee at least once, never exactly once.
+
+Then the distance to production. Working through the files against the code turned up a list, and the readiness checklist on the page tracks it. Seven of the eight are done. There is a health endpoint that runs a real query. In production the server refuses to start without its token secret, its public origin, and a database address. The development token routes are not mounted, so nothing can mint a token. Demo data is not seeded. Something processes the jobs. And the limits are shared across replicas.
+
+The one not done is the container image: written, but never built. A real identity provider, and provisioning real members, are yours to build. And, if either secret uses a customer managed encryption key, give the instance role permission to decrypt with that key.
+
+Why list gaps? A teaching repository is allowed to be incomplete. What it must not do is let the reader assume the missing parts are there. The skill underneath is reading a deployment sketch, and asking, for each requirement, where in these files is that.
+
+The table of findings is worth a slow read. Every row is a place where a control existed but did not apply, and each one was found by looking, not by a failing test. Two stay open: the Dockerfile and template have never been built or deployed, and identity is yours to add.

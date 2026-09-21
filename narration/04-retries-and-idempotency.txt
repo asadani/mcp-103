@@ -1,0 +1,15 @@
+Chapter four. Retries and idempotency.
+
+The dangerous failure is not the one that says no. It is the one that says nothing, when you cannot tell whether the work happened.
+
+A network call can fail in two very different ways. It can fail before the work: nothing happened, and retrying is safe. Or it can fail after: the work happened, the response was lost, and retrying repeats it. From the caller's side, both look like a timeout. That is the ambiguous case, and it is the reason idempotency exists.
+
+Start with the layer that calls the product APIs. It gives every attempt one shared five second deadline, and it only retries reads. Search calls, read calls, and get task. A write is attempted once. This layer refuses to guess about writes. The deeper protection is the operation key, which lets you retry a write yourself.
+
+Now the simulator. A client sends create task, the server does the work, and the response is lost on the way back. Then the client picks a strategy. Give up, and one task exists, but the user believes it failed. Retry as a new call, and two tasks exist, a duplicate. Retry with the same key, and one task exists, and the stored result comes back so the client learns the truth. And if the server crashed midway, the failed transaction leaves no task and no claim, so the retry commits exactly one.
+
+That last row is why the operation claim and the product write must share one transaction. A failure before commit rolls back both. A lost response after commit is safe too, because retrying the same key returns the result that committed with the write. A concurrent duplicate may briefly get a retryable in progress answer, and a later retry returns the committed result.
+
+But an operation key does not last forever. A maintenance sweep deletes operation records seven days after they were created. A retry inside the seven days is replayed. A retry after them is a brand new operation, and the write runs again. So give up on a write long before a week has passed.
+
+Two rules cover most of what goes wrong. Bound every retry by a deadline, not just an attempt count. And never retry what you cannot classify, because validation, permission, and conflict failures fail the same way every time.

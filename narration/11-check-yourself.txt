@@ -1,0 +1,7 @@
+Chapter eleven. Check yourself.
+
+Eight questions again, and as before, the explanations are the point.
+
+The thread through this course is that production is not a feature, it is a set of controls that each have to be applied, on every path. A role and a plan are different questions. A rate limit and a budget protect different things. A retry is only safe for a read, and an operation key is what makes a write safe to repeat, for seven days. A circuit stops you hammering a broken dependency, and a fallback must never pretend to be fresh. An address check has to parse, and it is still only one layer. A lease means at least once, so the work must be safe to repeat. And a control that exists is not a control that applies.
+
+If an answer surprises you, go back to the chapter it names.

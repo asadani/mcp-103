@@ -1,0 +1,15 @@
+Chapter five. Fallbacks and circuits.
+
+When a dependency is failing, hammering it makes it worse and makes you slow. A circuit breaker stops the calls. A fallback decides what to say instead, and it must not lie.
+
+Retries assume a failure is brief. When a dependency is genuinely down, each retry is one more request into a broken thing, each holding a connection and a slot while it waits for a timeout. A circuit breaker notices a run of failures, and starts refusing immediately, without calling, for a cool down period. Then it lets one call through to test the water.
+
+The breaker is about twelve lines, and it has three states, though there is no field that says which. Two numbers imply it. Closed means fewer failures than the threshold, and calls pass. Open means the threshold is reached and the cool down has not passed, so calls are refused with a retryable circuit open error. Half open means the cool down has passed, so the next call is a probe. A success resets the count. A failure opens it again. The simulator uses a threshold of three and a one second cool down. Fail three times, try a healthy call while it is open, then wait and try again.
+
+It is wired in. It used to be defined and used by nothing. Now there is one breaker per product API, wrapped around the retrying call. And it only counts outages: unreachable hosts, server errors, and blown deadlines. A definite answer from a healthy dependency, such as not found, resets the count, so a run of refusals cannot open the circuit.
+
+Then fallbacks, and the rule that separates the honest ones: a fallback must declare its reduced quality, so the caller can decide whether it is good enough. Serve cached data, and say it is stale, and how old. Return partial results, and say which parts are missing. Degrade a feature, and say which capability was dropped. Fail fast, with a retryable code. And the dishonest one: returning stale data as if it were fresh.
+
+That last one is the one to fear with an agent. A person shown stale data can see the timestamp and doubt it. A model shown stale data will build the next three steps on top of it.
+
+And never use retries or fallbacks to smooth over a permanent failure. A permission refusal is not an outage.

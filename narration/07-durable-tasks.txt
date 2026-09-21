@@ -1,0 +1,15 @@
+Chapter seven. Durable tasks.
+
+Stateless MCP means a request carries its own context. It does not mean every piece of work finishes inside one.
+
+A model waiting thirty seconds for a report is a model holding a connection, a slot, and a timeout. The alternative is a job. Accept the work, write it down, return a handle straight away, and let something else do it. The caller polls, or is told, when it is done. Teamspace has two tools and a table for this: one to start a release job, and one to get a job.
+
+There are five ideas, in the order the code has them. Creating a job needs the write role and the Pro plan. Reading one is scoped to the organisation and the person who created it, so a colleague gets not found. Leasing uses a lock that lets workers skip past claimed rows, records who holds the lease, and will not lease a job that has used all its attempts. Completing succeeds only for the worker that holds an unexpired lease. And a failure puts the job back in the queue until its attempts run out, and then dead letters it, with the reason.
+
+Use the simulator, with two workers. Lease with worker one, let the lease lapse by advancing thirty one seconds, as if it crashed, then lease with worker two. Now have worker one try to complete. It is refused. Keep letting leases lapse until the attempts run out, and watch the job be dead lettered.
+
+That is the point of a lease. Nobody has to notice the crash. The job simply becomes available again when the lease runs out. The price is at least once delivery, so the work has to be safe to repeat. Completion checks the owner, so a slow first worker cannot overwrite a second one. And attempts have a ceiling, three by default, so a job that keeps crashing its worker is not re leased for ever.
+
+Two things used to be missing. Nothing processed the jobs, because lease and complete were only ever called by a test. A worker file now does it, started in the process, or run on its own against a shared Postgres. And a viewer could queue jobs, because the plan was checked but not the role. It now asks both questions.
+
+There is also an optional MCP extension for tasks, which standardises this lifecycle with get, update, and cancel. This repository implements the application pattern with its own tools and table. Either way, the database or the queue owns durability.

@@ -1,0 +1,17 @@
+Chapter two. Fairness and limits.
+
+One noisy caller must not starve everyone else. A limiter decides who waits, and where it lives decides whether it works.
+
+The fair limiter makes two decisions on every call. First, does this actor have tokens left in their bucket? Second, does this organisation have a free concurrency slot? The bucket handles bursts over time. The slot cap handles too many things happening at once.
+
+There are two pieces. The shared rate is the token bucket. One database statement refills the caller's bucket from the elapsed time and spends from it, or refuses, and a row lock makes that atomic across processes. So the allowance is one number, however many replicas serve the traffic. The concurrency caps stay in memory, per process, on purpose, because they protect this process from too much at once. An organisation may have three calls in flight, and one member two.
+
+Use the simulator, on a virtual clock. Call as Alice twice, and she holds two of Acme's three slots, the most one member may hold. A third call by Alice is refused, and Bob still gets in. Fill the last slot as Bob and the organisation is full. Eve, in another organisation, goes straight through. Before this was fixed, one member could take every slot and lock out their whole team.
+
+Then look at a leaked permit. Tick forget to leave, and make two calls. The slots never come back, and that member is locked out until the process restarts. This is why the pipeline releases inside a finally block. Every acquire has exactly one release, on every path, including the ones that throw.
+
+The bucket only charges for admitted calls. A call refused for concurrency spends nothing.
+
+It used to be worse. The bucket was a map inside each process, so three replicas gave three times the limit, and every restart reset it. Now it lives in Postgres, and a test puts two limiters on one database and shows they spend a single allowance.
+
+Two facts about placement. The limiter runs after the actor lookup, so even a refused call has already cost a database read. And because the shared bucket is a database statement per call, put a cheap limit at the edge, in front of it, for floods.

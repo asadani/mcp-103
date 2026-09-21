@@ -1,0 +1,15 @@
+Chapter one. Trust boundaries.
+
+Every layer in front of a database row is a decision about who is asking. Production means each one is checked, on every request, and none of them is a hint.
+
+Read the pipeline top to bottom, and a call to a Teamspace tool passes seven questions. Is the token genuine, unexpired, and meant for this service? Is this person an active member? May they act at all, or only read? Does their plan include this feature? Is this row in their organisation and team? Did someone consent to this exact action? And have we done this exact thing already? Each has a different owner, and fails with a different code.
+
+Questions three and four are the pair that gets confused most. A role answers what may this person do to our data. A plan answers what did this customer buy. Neither implies the other. A viewer on the Pro plan still cannot write, and an admin on the free plan still cannot start a job. The plan error even says so: data permissions still apply.
+
+The organisation, team, role, and plan all come from one place, the actor row. Nothing about the caller is taken from the request body. And the boundary itself is in the query: the organisation and team come from the actor, so a task in another team returns the same not found as a task that does not exist.
+
+Now, visibility is not authorisation. The tool list is identical for every caller. A viewer sees create task. Hiding a tool would be a nicety, and would protect nothing, because a caller can name any tool. Every invocation runs all seven questions again.
+
+Use the attack panel. Each tab is one attempt to cross a line, with the real answer. Eve knows a task id, and it makes no difference. A schema refuses an invented organisation field. A viewer is refused before the schema is even parsed, so it learns nothing about a valid call. And a viewer on the Pro plan is refused by the role check, even though the plan check alone would pass.
+
+If you add an organisation field to a schema, the read query no longer needs the actor. That is the moment a tenant boundary becomes a suggestion.

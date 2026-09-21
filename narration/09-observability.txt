@@ -1,0 +1,15 @@
+Chapter nine. Observability.
+
+When something goes wrong at three in the morning, the record has to say who, which tenant, what, how it ended, and how to find the rest, without containing anything you would regret leaking.
+
+An audit record is small on purpose. It answers five questions: who, the actor; which tenant, the organisation; what, the operation; how it ended, the outcome; and which request, the trace id. Plus a timestamp. Now read what it leaves out. No arguments, no page bodies, no tokens, no scraped content. That is deliberate. Logs are copied to more places than databases are, kept longer, and read by more people, so anything in them is effectively public inside your company. If an argument was sensitive, it should never have been written. And the ones that are not sensitive can be recovered from the trace id.
+
+The trace id is the thread. It is generated for each call, returned in the error the caller sees, and written to the audit row, so a user's screenshot of an error leads straight to the record of it.
+
+The endpoint that returns these rows is restricted to organisation administrators. Anyone else gets forbidden. An administrator sees the twelve most recent rows for their whole organisation, newest first.
+
+Now, what a metric label costs. Metrics are different from logs. A metric is stored as one time series for each unique combination of its label values. Add a label, and the number of series is multiplied by how many values it can take. Labels with a small fixed set of values are cheap. Labels with a value per user or per record are an outage waiting to be billed. Use the calculator on the page. Add the organisation label, then the actor, then the task id, and watch the count. Per tenant and per user detail belongs in logs and traces, where one row per event is normal.
+
+Every handled tool call now leaves an audit row. The job tools used to write nothing, and for a system whose job is to say who did what, the background path is the one that spends real money. All tools go through the guarded pipeline, so a new tool cannot forget.
+
+And rate limited calls are audited as throttled, not failure, so an alert on the failure rate does not page you during a legitimate burst of throttling.

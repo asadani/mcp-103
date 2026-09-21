@@ -1,0 +1,15 @@
+Chapter three. Budgets and entitlements.
+
+A plan says a feature is available. A budget says whether this organisation can afford this call right now. They answer different questions, and they fail differently.
+
+Rate limits protect the server's capacity. A budget protects the customer's wallet, and yours. Teamspace tracks three numbers for each organisation: the allowance, what they may spend; spent, what is settled; and reserved, what running calls have claimed. The interesting part is the reservation.
+
+Reserve first, reconcile after. Reserving is one conditional statement. It adds to the reserved amount only where spent plus reserved plus the new amount still fits inside the allowance. If no row is updated, you get budget exceeded. Because the check and the increment are the same statement, two concurrent calls cannot both take the last unit. A separate read, then write, would have exactly that race. The same statement also inserts the reservation row, so a crash cannot leave a hold with no record. Later, reconcile replaces the estimate with the real cost, and releases the hold.
+
+Try the simulator. Reserve an estimate, then settle it. Settle with an actual cost above the estimate, and the charge is capped at what was reserved. A reservation is a ceiling. Settle the same one twice, or one that does not exist, and you get an invalid reservation error.
+
+Holds expire, after five minutes. The next reservation for the organisation sweeps the expired ones away, so a process that dies between reserve and reconcile no longer locks up allowance for ever. Use the button that lets six minutes pass.
+
+Only the import tool reserves anything. Every other tool costs nothing against the budget, which is a fair choice for cheap reads, and a decision worth making deliberately rather than by omission.
+
+Last, keep entitlement and budget separate, in your head and in your code. Entitlement is static for a billing period. Pro gets background jobs, free does not, and the answer is plan required. Budget is dynamic, it depletes with use, and the answer is budget exceeded. Merge them, and you get the classic support ticket: it says I do not have access, but I paid. When the truth is, you have used everything you paid for.

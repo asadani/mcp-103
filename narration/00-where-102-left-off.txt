@@ -1,0 +1,11 @@
+Chapter zero. Where one oh two left off.
+
+MCP one oh two made the integration correct. MCP one oh three asks what happens to correctness when callers are many, the network is not yours, and the work takes longer than a request.
+
+It starts from the finished system in one oh two: the same five identities, the same two product APIs, the same tenant model. What this course adds is a file of production controls, a job worker, four new tools, an operations endpoint, a Dockerfile, and a deployment sketch. The table on the page lists each new piece, and the chapter that covers it. A fair limiter. A budget ledger. A safe URL importer. A durable job queue with leases. A helper that carries a deadline, a budget, and the route across composed calls. And a shared rate limit that lives in the database.
+
+Now the request pipeline. In one oh two, a single function identified the caller, forwarded the call, and audited it. Here that logic is a function called guarded. It also asks the limiter for permission first, and always gives the permit back. Reads cost one unit, and writes cost two. That single change is the whole integration point for rate limiting, and it is worth noticing: the control lives in the adapter, where every tool goes through it, not scattered through the tools.
+
+Then a lesson about wiring. Before trusting any control, find out where it is actually applied. The table on the page was built by reading the source and searching for each control's call sites. And it used to have holes. The two job tools sat outside the pipeline the other seven shared: no rate limit permit, no audit row, plain text errors, and job creation checked the plan but not the role. Nothing in the tests noticed, because each control was tested on its own.
+
+A control that exists is not a control that applies. So keep asking where each one is wired in.

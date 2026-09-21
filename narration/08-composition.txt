@@ -1,0 +1,15 @@
+Chapter eight. Composition.
+
+When one server calls another, four things must travel with the request, or you lose control of it: who, how long, how much, and where it has been.
+
+Sometimes one MCP server has to call another. A workflow server, say, that reaches a knowledge server. Each hop is a new request, and each new request is a chance to forget something. The four things that must not be forgotten are the subject, whose authority this is; the deadline, when the original caller stops waiting; the budget, what is left to spend; and the route so far, so a cycle is noticed.
+
+One function checks all four before every hop. Four checks, in order. Has the shared deadline passed? Can the remaining budget cover this hop? Have we already visited this server? Is the chain already five servers long? Each returns a distinct code. Because the deadline and the budget are carried, not reset, a chain cannot quietly take ten times as long, or cost ten times as much, as the caller agreed to.
+
+Use the panel to extend a call chain. It starts as the lab does: a budget of ten, one server visited, and a five second deadline. Try calling the first server again, and you get a cycle. Spend past the budget. Use up the deadline in three chunks.
+
+Notice two details in the captured run. A refused hop does not consume budget or extend the route, because the check happens before the new state is built. And the depth limit counts servers, including the origin, so with five allowed, the chain stops after four hops.
+
+It used to be exported, tested, and run in a lab, but no tool used it. Now there is a composite tool, draft release note. It reads the completed tasks, then the checklist page, as two internal hops, sharing one deadline, one budget, and one route. Look at the tail of the answer. The route is the server, the tasks API, and the knowledge API. The budget went from ten to four, three for each hop. Each hop went through the same guarded pipeline, and the whole call is one audit row. It returns a draft and stops. Publishing still needs an approval, which stays in the host.
+
+And avoid the opaque chain. The alternative to carried context is an agent inside an agent: one tool that quietly calls a model, which calls another tool, which calls another server. Cost, latency, policy, and the source of a failure all disappear inside it. If a chain has to exist, make every hop pass its budget and deadline down, and let the caller see the whole route.

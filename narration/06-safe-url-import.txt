@@ -1,0 +1,15 @@
+Chapter six. Safe URL import.
+
+The import tool asks the server to fetch a web address on the caller's behalf. That is a request to make your network reach somewhere you did not choose.
+
+This is server side request forgery. The attack is simple. A caller who cannot reach your database, your cloud metadata service, or an admin panel asks you to fetch a URL pointing at one, and you dutifully return what you find. The fetch runs inside your network, with your network's trust. A URL fetcher is a doorway, and this class exists to guard it.
+
+The structure is right. Allow HTTPS only, and no user name or password in the address. Resolve the name to all its addresses, and reject the URL if any one is private. Then connect to the address that was checked, and no other. That closes the gap where a second DNS lookup could return a different answer after validation. Redirects are followed by hand, and every hop goes through the same checks. Size and time are capped.
+
+Now, where the first version leaked. It decided with a short list of text prefixes: an address was private if it started with one twenty seven, or ten, or one sixty nine. A list like that has to name every dangerous address, and this one did not. The table on the page shows the real functions, before and after. The unspecified address passed. So did shared address space. And most seriously, the version four mapped forms of version six I.P. addresses. Loopback, and the cloud metadata service, written in mapped form, start with colon colon f f f f, so they sailed past a prefix check.
+
+The fix parses instead of pattern matching. It unwraps mapped addresses first, compares version four addresses numerically, and treats version six addresses as an allow list: only global addresses pass. Try the address playground, and compare the current check with the original one.
+
+Then what no address check can fix. Ports are not restricted. And stripping tags does not make content safe. The tool returns the text labelled as untrusted external content, and never publishes it, because a web page can contain sentences addressed to a model. Removing HTML does not remove them.
+
+So treat this class as one layer. Put the process behind an egress proxy or a network policy that cannot reach your private ranges, run it with no metadata credentials, and check the media type. Each layer may have a hole, because the next one is not in the same place.
