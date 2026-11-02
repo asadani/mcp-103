@@ -22,7 +22,7 @@ python tools/verify-audio.py audio-qwen author.html      # the cloned voice
 ```
 
 `--device cuda` needs `onnxruntime-gpu` and the `nvidia-*` CUDA wheels in the
-environment (`../narrate-your-writing/requirements-kokoro-gpu.txt`). On a
+environment (`../../../tools/narrate-your-writing/requirements-kokoro-gpu.txt`). On a
 GTX 1650 it renders at about a tenth of real time, so a course takes about
 three minutes. `--device cpu` is the default and works everywhere, at roughly
 real time. Asking for `cuda` and not getting it is an error, never a silent
